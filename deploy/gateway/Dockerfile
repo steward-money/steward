@@ -1,6 +1,6 @@
 # The gateway for Docker Compose (docs/guides/gateway.md): CPU only, so no NVIDIA wheel is in the image. Its bases are
 # the app image's, pinned by digest; tests/test_gateway_image.py checks them, the CPU torch and the user.
-FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS base
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS base
 RUN useradd -u 1000 -m steward-gw \
  && install -d -m 700 -o steward-gw -g steward-gw /etc/steward-gateway /var/lib/steward-gateway /var/cache/steward-gateway
 COPY --from=ghcr.io/astral-sh/uv:0.9@sha256:538e0b39736e7feae937a65983e49d2ab75e1559d35041f9878b7b7e51de91e4 /uv /usr/local/bin/uv

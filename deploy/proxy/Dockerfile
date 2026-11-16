@@ -1,11 +1,11 @@
 # steward-proxy: Caddy with the Cloudflare DNS module, Steward's optional HTTPS front door (docs/quickstart/install.md).
 # Published by .github/workflows/release.yml as ghcr.io/steward-money/steward-proxy. Versions are pinned here and in tests/test_proxy_files.py; change both together.
-FROM caddy:2.11.7-builder@sha256:d842facfd63b960922e57444ff76fd8f0793a66dfdcf481af8026e1f4e6a39b4 AS build
+FROM caddy:2.11.9-builder@sha256:345264d8c6b50f44f4a4d507d4e6b6bcae40eef2f210d70f76e717fd8cc31baf AS build
 # The builder image sets XCADDY_SETCAP=1, which gives the binary file capabilities; compose drops them all, so it couldn't exec.
 ENV XCADDY_SETCAP=0
 RUN xcaddy build v2.11.7 --with github.com/caddy-dns/cloudflare@v0.2.4
 
-FROM caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+FROM caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
 # curl is there for a healthcheck a compose file can give the proxy (deploy/compose.yml defines none). It is pinned so
 # two builds get the same curl; when Alpine replaces that version, the build fails until the pin moves.
 # The proxy gets its own user: not root, not Steward's 1000.
