@@ -41,7 +41,7 @@ dev = [
 ]
 # The gateway (spec 3.4). Never installed in the NAS image (`uv sync --frozen --no-dev`).
 gateway = [
-    "anthropic==2.8.0",
+    "anthropic==2.10.0",
 ]
 # GLiNER-PII and Presidio for the gateway's redaction (spec 4.3). The gateway's machine only.
 models = [
