@@ -21,6 +21,14 @@ export const tab = (page: Page, name: string) => page.getByRole('navigation', { 
 export async function youMenu(page: Page) { await page.getByRole('button', { name: /^You: / }).click(); }
 
 
+/** A line as the page shows it, not the copy of its words in a polite region (issues #23, #51: a line that appears is
+ *  said through the page's or a sheet's announcer, which holds the same words). For a line that may be in a sheet,
+ *  where looking inside main doesn't reach. */
+export const shown = (scope: Page | Locator, text: string | RegExp, options?: { exact?: boolean }) => {
+  const page = 'page' in scope ? scope.page() : scope;
+  return scope.getByText(text, options).and(page.locator(':not([aria-live])'));
+};
+
 /** Move a range slider to whichever end it is not at, so the move always changes the value. */
 export async function moveFar(page: Page, slider: Locator) {
   await slider.focus();

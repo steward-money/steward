@@ -175,7 +175,7 @@ describe("one account's page", () => {
     wrapBook(<Routes><Route path="/b/:slug/accounts/:id" element={<AccountPage />} /></Routes>, ours, '/b/ours/accounts/5');
     fireEvent.click(await screen.findByRole('button', { name: 'Merge into…' }));
     const sheet = await screen.findByRole('dialog', { name: 'Merge Old Roth into…' });
-    expect(await within(sheet).findByText('4 transactions match and will be dropped; nothing will move over.')).toBeInTheDocument();
+    expect(await within(sheet).findByTestId('merge-preview')).toHaveTextContent('4 transactions match and will be dropped; nothing will move over.');
     fireEvent.click(within(sheet).getByRole('button', { name: 'Merge into Roth IRA' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Roth IRA' })).toBeInTheDocument();
     expect(await screen.findByText('Merged. Roth IRA now gets updates from both logins; 4 copies were dropped and nothing new was kept.')).toBeInTheDocument();

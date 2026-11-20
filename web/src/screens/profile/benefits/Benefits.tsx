@@ -14,6 +14,7 @@ import {
   A_YEAR, ABOUT_MONTHLY, ADD_RECORD, CARD_ESTIMATE, CARD_HEALTH, CARD_RECORD, CHOOSE_FILE_FOR, ESTIMATE_KEPT, ESTIMATE_LINE, ESTIMATE_SOURCE, ESTIMATE_USED, HEALTH_PREMIUM, HEALTH_WHY, NOTHING_WAS_SAVED, PREMIUM_NEEDED, PRIVACY, RECORD_ADDED, RECORD_LINE, SPOUSAL_LINE, SS_WHY, SSA_STEPS, STEP_HEALTH, STEP_SS, USE_ESTIMATE,
 } from '../copy';
 import { FormError } from '../../../ui/Field';
+import { Shown, useArriving } from '../../../ui/Live';
 import { ProfileField, invalidateProfile, useFieldMode } from '../field';
 import { useOffer } from '../home/offer';
 import type { BodyProps, SectionDef } from '../sections';
@@ -36,6 +37,9 @@ function PersonBlock({ person, b, names }: { person: Person; b: BenefitPerson; n
   const name = names[person];
   const { canEdit } = useFieldMode();
   const { offer, view } = useOffer();
+  // Review of #51: the line shows the saved record or estimate, so it is quiet when the step opens; a line that changes
+  // or appears after that (a record just added) is said.
+  const arriving = useArriving();
   async function pick(e: ChangeEvent<HTMLInputElement>) {
     const chosen = e.target.files?.[0];
     e.target.value = '';
@@ -66,7 +70,7 @@ function PersonBlock({ person, b, names }: { person: Person; b: BenefitPerson; n
   return (
     <section className="card prof-card__step" aria-labelledby={`ss-${person}-h`}>
       <h3 id={`ss-${person}-h`}>{name}</h3>
-      {said && <p className="kid-line" role="status">{said}</p>}
+      {said && <Shown className="kid-line" quietOnMount={arriving}>{said}</Shown>}
       {canEdit && (
         <>
           <div className="ob-form-actions">

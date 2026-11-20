@@ -8,7 +8,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from steward.db.models import Flag, Institution, InventoryItem, SimplefinLink, Transaction
+from steward.db.models import Flag, Institution, InventoryItem, SimplefinLink, Transaction, WatchKnown
 from steward.services.accounts import record_balance
 from steward.watch.run import run_daily, run_watch
 from steward.watch.store import add_flag
@@ -161,6 +161,39 @@ def test_marking_through_the_api(at_now, margaret, mdb, client):
     assert [t for t in texts if t.startswith("Jr")] == ["Jr reopened it", "Jr marked Expected", "Jr changed the note",
                                                         "Jr marked Still checking"]
     assert client.get(f"{BOOK}/flags/999999").status_code == 404
+
+
+def test_a_flag_raised_under_an_old_payee_key_is_marked_by_the_store_its_row_names_now(at_now, margaret, mdb, client):
+    """Public issue #49: a flag raised before the parser read Wells Fargo's card lines by their store keeps the payee
+    "Authorized On" in its facts. Its page, its Mark Expected sheet and the Known payee Expected adds name the store
+    the row gives now, so the store's next payment is covered and its earlier payments are found."""
+    chk = account(mdb, "Joint checking")
+    history(mdb, chk)
+    wf = "PURCHASE AUTHORIZED ON {} STARBUCKS STORE 05812 SEATTLE WA S382074123456789 CARD 1234"
+    txn(mdb, chk, 40, -2_350, wf.format("09/09"), watched=True)
+    txn(mdb, chk, 30, -1_200, "PURCHASE AUTHORIZED ON 09/19 SHELL OIL 57444212400 HOUSTON TX P000000381234567 CARD 1234",
+        watched=True)
+    big = txn(mdb, chk, 2, -60_000, wf.format("10/17"), watched=True)
+    old = {"payee": "Authorized On", "payee_key": "AUTHORIZED ON", "method": "card", "amount_cents": 60_000,
+           "account": "Joint checking", "posted_at": big.posted_at.isoformat(), "large_cents": 50_000}
+    f = add_flag(mdb, check="large", severity="normal", summary="$600.00 to Authorized On",
+                 title="$600.00 to Authorized On", facts=old, now=NOW, after="sync", transaction_id=big.id,
+                 account_id=chk.id)
+    mdb.commit()
+    login(client, "jr")
+    page = client.get(f"{BOOK}/flags/{f.id}").json()
+    assert page["transaction"]["payee"] == "Starbucks Store"
+    assert page["earlier"]["heading"] == "Earlier at Starbucks Store"
+    assert page["earlier"]["line"] == "1 purchase in the last 12 months, $23.50."      # not the Shell line
+    assert page["expected"]["scopes"][0]["line"].startswith("Starbucks Store, $450 to $750.")
+    r = client.post(f"{BOOK}/flags/{f.id}/expected", json={"scope": "about"})
+    assert r.json()["done_line"] == "Marked Expected. Starbucks Store, $450 to $750, added to Known payees."
+    mdb.commit()      # end this session's read so it sees the API's write
+    [k] = mdb.scalars(select(WatchKnown)).all()
+    assert (k.payee_key, k.payee_name) == ("STARBUCKS STORE", "Starbucks Store")
+    nxt = txn(mdb, chk, 0, -58_000, wf.format("10/19"))
+    run_watch(mdb, TODAY, NOW, after="sync")
+    assert mdb.scalar(select(Flag).where(Flag.transaction_id == nxt.id)) is None     # the Known payee covers it
 
 
 def test_viewers_read_flags_but_cannot_mark_them(at_now, margaret, mdb, client):

@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client';
 import { TRY_AGAIN } from '../../lib/copy';
-import { dateLabelFromIso } from '../../lib/format';
+import { dateLabel } from '../../lib/format';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
 import type { LastSaved } from './api';
@@ -18,7 +18,7 @@ export const agesLine = (c: number | null, l: number | null) => `${part(COMFORTA
 export function LastSavedAges({ last }: { last: LastSaved }) {
   return (
     <div className="last-saved" data-testid="last-saved">
-      <p className="eyebrow">{FROM_SAVED.replace('{date}', dateLabelFromIso(last.saved_at, new Date()))}</p>
+      <p className="eyebrow">{FROM_SAVED.replace('{date}', dateLabel(last.saved_day, new Date()))}</p>
       <p className="last-saved__ages">{agesLine(last.comfortable_age, last.likely_age)}</p>
     </div>
   );

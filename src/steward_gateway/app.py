@@ -43,6 +43,7 @@ from steward_gateway.prices import cost_nd, estimate_nd, reserve_price, settle_p
 from steward_gateway.prompt import PREFIX_ID, prefix, prefix_sha256, prewarm_body, prewarm_payload
 from steward_gateway.redact import Guarded, load_real_detectors, redact
 from steward_gateway.secrets import api_key, read_private
+from steward_gateway import sending
 
 log = logging.getLogger("steward_gateway.app")
 MAX_TEXT = 4000
@@ -59,8 +60,12 @@ def make_client(cfg: GatewayConfig, key: str | None):
         return None
     import anthropic
     # No retries: a sent attempt that timed out, then a retry that failed to connect, would read as "never
-    # connected" and release a reservation Anthropic may have billed (final review, finding 3).
-    return anthropic.AsyncAnthropic(api_key=key, base_url=cfg.anthropic_base_url, max_retries=0)
+    # connected" and release a reservation Anthropic may have billed (final review, finding 3). open_telemetry=False:
+    # the SDK makes no spans and sends no trace context, whatever tracer provider the process has. The HTTP client is
+    # the SDK's default with a hook that says when a request starts going out (steward_gateway.sending); it adds no
+    # header and changes nothing sent.
+    return anthropic.AsyncAnthropic(api_key=key, base_url=cfg.anthropic_base_url, max_retries=0, open_telemetry=False,
+                                    http_client=sending.http_client())
 
 
 class WsIO:
@@ -458,14 +463,27 @@ def create_gateway_app(cfg: GatewayConfig, *, detectors=None, client=None, ledge
             return {"sent": False}
         st.last_prewarm = now()
         st.ledger.record_sent(now(), [(sha256_hex(payload), len(canonical(payload)))], book_id, "prewarm")
+        attempt = sending.Attempt()
+
+        def unwind(e: BaseException) -> None:
+            """Released when Anthropic refused it with an error status or it certainly never went out; otherwise it
+            may have been billed and counts at its reservation: the same rule as a turn's requests."""
+            if isinstance(e, anthropic.APIStatusError) or sending.nothing_sent(attempt, e):
+                st.ledger.release(rid)
+            else:
+                st.ledger.settle(rid, reserved)
         try:
-            msg = await st.client.messages.create(**req)
-        except Exception as e:  # noqa: BLE001 - a failed prewarm costs nothing and changes nothing
-            st.ledger.release(rid)
+            with sending.watching(attempt):
+                msg = await st.client.messages.create(**req)
+        except Exception as e:  # noqa: BLE001 - a failed prewarm changes nothing
+            unwind(e)
             kind, message = api_error_reason(e) if isinstance(e, anthropic.APIStatusError) else ("", "")
             log_event(log, "prewarm.failed", level=logging.WARNING, error_type=type(e).__name__,
                       error_kind=kind, error_message=message)
             return {"sent": False}
+        except BaseException as e:      # cancelled (the gateway stopping): no reservation is left open (Argon 2.3)
+            unwind(e)
+            raise
         usage = msg.usage.to_dict(mode="json")
         st.ledger.settle(rid, cost_nd(usage, settle_price(cfg, msg.model, usage)))
         log_event(log, "prewarm.done", cache_write_tokens=usage.get("cache_creation_input_tokens") or 0,

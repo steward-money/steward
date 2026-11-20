@@ -31,7 +31,7 @@ def test_0021_makes_the_home_account_from_profiles_value(settings):
                        "VALUES (1, 1, 'Mortgage', 'mortgage', 'joint', 'simplefin', 'USD', 1, '2026-10-01 00:00:00')"))
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         [(aid, name, type_, owner, source)] = c.execute(text(
             "SELECT id, name, type, owner, source FROM account WHERE type = 'property'")).all()
         assert (name, type_, owner, source) == ("Home", "property", "joint", "manual")

@@ -81,7 +81,7 @@ const SHOTS: Record<string, Shot[]> = {
     { name: 'profile-cheer-all', path: '/profile', vault: 'demo', ready: 'Profile', before: async (page) => {
       await page.goto('/profile/kids/plans');
       await page.getByRole('button', { name: 'Done' }).click();
-      await page.getByText('Your profile is complete. The Plan knows your household now.').waitFor();
+      await page.getByRole('main').getByText('Your profile is complete. The Plan knows your household now.').waitFor();
       await page.waitForTimeout(500);                                 // mid-burst
     } },
   ],

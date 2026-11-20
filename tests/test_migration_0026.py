@@ -17,7 +17,7 @@ def test_0026_adds_inputs_summary_and_downgrade_drops_it(settings):
                        f"VALUES (1, {AT}, 1, '{{}}', '2026.10.4', 63, 60)"))
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert c.execute(text("SELECT inputs_summary FROM plan WHERE id = 1")).scalar() is None
     col = {x["name"]: x for x in inspect(eng).get_columns("plan")}["inputs_summary"]
     assert col["nullable"] is True and str(col["type"]) == "TEXT"

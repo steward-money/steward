@@ -4,6 +4,7 @@ import type { SetAsideRow } from '../../../api/types';
 import { soundOn } from '../../../lib/celebrations';
 import { nextLine, spareWeeks } from '../../../lib/lines';
 import { momentAllowed } from '../../../lib/momentAllowed';
+import { Shown } from '../../../ui/Live';
 import { useWinMoment } from '../../../ui/useMoment';
 
 const KEY = 'steward-sa-covered';
@@ -33,7 +34,7 @@ export function CoveredLine({ rows }: { rows: SetAsideRow[] }) {
   const host = useRef<HTMLParagraphElement>(null);
   useWinMoment(host, line && allowed.motion ? 'sprout' : null, allowed.sound && soundOn());
   if (!line || !allowed.line) return null;
-  return <p ref={host} className="sa-moment" data-testid="sa-covered" role="status">{line}</p>;
+  return <Shown ref={host} className="sa-moment" data-testid="sa-covered">{line}</Shown>;
 }
 
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'long' });
@@ -46,5 +47,5 @@ export function FirstLine({ nextDue }: { nextDue: string | null }) {
     return nextLine('setAsideFirst', { month: MONTH.format(new Date(y, m - 1, 1)) });
   });
   if (!line || !momentAllowed('setAside', { parent: false }).line) return null;
-  return <p className="sa-moment" data-testid="sa-first" role="status">{line}</p>;
+  return <Shown className="sa-moment" data-testid="sa-first">{line}</Shown>;
 }

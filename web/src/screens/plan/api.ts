@@ -28,8 +28,10 @@ export type PlanResult = {
   band_age: number | null; band: BandPoint[]; success_by_age: [number, number][];
   assumptions: string[]; assumption_groups: string[]; input_digest: string; engine_version: string; histories: number;
 };
+/** `saved_day`: the household's day it was saved, YYYY-MM-DD, as the server reads it (#52); every screen names a save by
+ *  it. `saved_at` is the instant, for the time of a save made today. */
 export type SavedPlan = {
-  id: number; saved_at: string; saved_by: { id: number; name: string | null }; engine_version: string;
+  id: number; saved_at: string; saved_day: string; saved_by: { id: number; name: string | null }; engine_version: string;
   comfortable_age: number | null; likely_age: number | null; levers: unknown; current: boolean; inputs_summary: InputsSummary | null;
 };
 /** A one-off the engine pays: `year` is the plan's payment year (the plan year when overdue), `due_year` the original. */
@@ -66,7 +68,7 @@ export type DeltaBody = { assumed?: Partial<LeverValues>; try?: Partial<LeverVal
 export type PreviewResponse = { levers: LeverState; result: PlanResult };
 export type ImpactsResponse = { levers: LeverState; impacts: Impact[] };
 export type SaveResponse = { plan: SavedPlan; levers: LeverState; result: PlanResult };
-export type LastSaved = { comfortable_age: number | null; likely_age: number | null; saved_at: string };
+export type LastSaved = { comfortable_age: number | null; likely_age: number | null; saved_at: string; saved_day: string };
 
 export const isReady = (r: PlanResponse): r is PlanReady => !('setup' in r);
 

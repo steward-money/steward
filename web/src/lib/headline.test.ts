@@ -5,16 +5,16 @@ import { headline, joinClauses, ordinal } from './headline';
 const v = (p: Partial<VerdictData>): VerdictData => ({ opener: 'steady', problems: [], clauses: [], stale: null, best_month: false, ...p });
 const one = (c: Clause) => headline(v({ clauses: [c] }));
 const STALE_ONE = { n: 1, oldest_days: 29, newest_days: 29, account: 'Joint checking' };
-const SAVED = '2026-10-12T12:00:00+00:00';   // Oct 12 in any zone from UTC-11 to UTC+11
+const SAVED = '2026-10-12';   // the household's day, as the server sends it (#52)
 
 describe('headline() (Home spec, The headline)', () => {
   it.each([
-    [v({ clauses: [{ kind: 'spending_on_track' }, { kind: 'bills_paid' }, { kind: 'plan', age: 54, still: true, saved_at: SAVED }] }), "A steady month. Spending's on track, bills are paid, and the plan saved Oct 12 still says 54."],
+    [v({ clauses: [{ kind: 'spending_on_track' }, { kind: 'bills_paid' }, { kind: 'plan', age: 54, still: true, saved_day: SAVED }] }), "A steady month. Spending's on track, bills are paid, and the plan saved Oct 12 still says 54."],
     [v({ opener: 'mostly', clauses: [{ kind: 'behind_until_payday', little: true }, { kind: 'over_one', category: 'dining' }] }), 'Mostly steady. A little behind until payday, and Eating out is ahead of its target.'],
-    [v({ opener: 'problem', problems: [{ kind: 'late_bill', category: 'utilities', usual_day: 12 }], clauses: [{ kind: 'spending_on_track' }, { kind: 'plan', age: 54, still: false, saved_at: SAVED }] }), "Utilities hasn't come out yet; it's usually by the 12th. Otherwise, spending's on track, and the plan saved Oct 12 says 54."],
+    [v({ opener: 'problem', problems: [{ kind: 'late_bill', category: 'utilities', usual_day: 12 }], clauses: [{ kind: 'spending_on_track' }, { kind: 'plan', age: 54, still: false, saved_day: SAVED }] }), "Utilities hasn't come out yet; it's usually by the 12th. Otherwise, spending's on track, and the plan saved Oct 12 says 54."],
     [v({ opener: 'problem', problems: [{ kind: 'overdrawn', account: 'Checking', cents: -12000 }] }), 'Checking is overdrawn by $120.'],
     [v({ clauses: [{ kind: 'spending_on_track' }], stale: { n: 3, oldest_days: 29, newest_days: 29, account: null } }), "A steady month. Spending's on track. 3 accounts haven't updated in 29 days."],
-    [v({ opener: 'new_month', clauses: [{ kind: 'plan', age: 54, still: true, saved_at: SAVED }] }), 'A new month. The plan saved Oct 12 still says 54.'],
+    [v({ opener: 'new_month', clauses: [{ kind: 'plan', age: 54, still: true, saved_day: SAVED }] }), 'A new month. The plan saved Oct 12 still says 54.'],
   ])('says the examples table word for word (%#)', (data, text) => {
     expect(headline(data)).toBe(text);
   });
@@ -36,9 +36,9 @@ describe('headline() (Home spec, The headline)', () => {
   });
 
   it("names the saved plan by its date, since Plan shows today's figure (#17), with the year when it's another year", () => {
-    const plan = (saved_at: string) => v({ clauses: [{ kind: 'plan', age: 66, still: false, saved_at }] });
+    const plan = (saved_day: string) => v({ clauses: [{ kind: 'plan', age: 66, still: false, saved_day }] });
     expect(headline(plan(SAVED), new Date(2026, 10, 16))).toBe('A steady month. The plan saved Oct 12 says 66.');
-    expect(headline(plan('2025-12-30T12:00:00+00:00'), new Date(2026, 0, 9))).toBe('A steady month. The plan saved Dec 30, 2025 says 66.');
+    expect(headline(plan('2025-12-30'), new Date(2026, 0, 9))).toBe('A steady month. The plan saved Dec 30, 2025 says 66.');
   });
 
   it('says how many accounts are behind and how long, by name when there is one alone (#15)', () => {

@@ -52,7 +52,7 @@ test('setup: each checklist row opens its setup step, which returns to the Plan;
   await page.getByTestId('earnings-file-spouse').setInputFiles('e2e/fixtures/earnings-wrong.xml');
   await expect(page.getByRole('alert')).toHaveText("That file doesn't look like a Social Security earnings record. Nothing was saved.");
   await page.getByTestId('earnings-file-spouse').setInputFiles('e2e/fixtures/earnings-sam.xml');
-  await expect(page.getByRole('status').filter({ hasText: '10 years, 2016 to 2025.' })).toBeVisible();
+  await expect(page.getByRole('main').getByText('10 years, 2016 to 2025.')).toBeVisible();
   await page.getByRole('main').getByRole('link', { name: 'Plan', exact: true }).click();
   await expect(page).toHaveURL(/\/plan$/);
 

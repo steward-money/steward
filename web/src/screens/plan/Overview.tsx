@@ -1,7 +1,7 @@
 import { History } from 'lucide-react';
 import { useState } from 'react';
 import { useFacts } from '../../api/hooks';
-import { dateLabelFromIso } from '../../lib/format';
+import { dateLabel } from '../../lib/format';
 import { Ages } from './Ages';
 import type { PlanReady, SavedPlan } from './api';
 import { BandChart } from './BandChart';
@@ -19,7 +19,7 @@ import { thisYear } from '../../lib/today';
 
 export function savedByText(plan: SavedPlan | null): string {
   if (!plan) return NOT_SAVED_YET;
-  return PLAN_SAVED_BY.replace('{name}', plan.saved_by.name ?? SOMEONE).replace('{when}', SAVED_ON.replace('{date}', dateLabelFromIso(plan.saved_at, new Date())));
+  return PLAN_SAVED_BY.replace('{name}', plan.saved_by.name ?? SOMEONE).replace('{when}', SAVED_ON.replace('{date}', dateLabel(plan.saved_day, new Date())));
 }
 
 /** The Overview (plan subpages decision 2): "am I on track", in order. It shows the saved plan as today's inputs answer

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { callsTo, reply, stubFetch } from '../../../test-utils';
-import { ME, atProfile, profileState } from '../fixtures';
+import { ME, atProfile, atProfileLive, profileState } from '../fixtures';
 
 afterEach(() => vi.unstubAllGlobals());
 const none = { source: 'none', years: 0, first: null, last: null, at_67_cents: null };
@@ -98,6 +98,32 @@ describe('Social Security and Medicare', () => {
       expect(callsTo(fetchMock, 'GET', '/api/profile/benefits').length).toBeGreaterThan(1);
       fireEvent.click(within(toast).getByRole('button', { name: 'Undo' }));
       await waitFor(() => expect(callsTo(fetchMock, 'POST', '/api/undo/r')).toHaveLength(1));
+    });
+
+    // Review of #51: the line shows what was saved, so it is quiet when the step opens; a record just added is said.
+    it('the line is quiet when the step opens and said when a record changes it', async () => {
+      const record = { source: 'record', years: 3, first: 2005, last: 2007, at_67_cents: 210_000 };
+      let added = false;
+      stubFetch({ '/api/profile': profileState(), '/api/auth/me': ME,
+        '/api/profile/benefits': () => reply(benefits({ jr: added ? record : { source: 'estimate', years: 22, first: 2004, last: 2025, at_67_cents: 310_000 } })),
+        'POST /api/ss/import': () => { added = true; return reply({ person: 'jr', years: 3, first_year: 2005, last_year: 2007, skipped: 0, undo: 'r' }, 201); } });
+      atProfileLive('/profile/benefits/ss');
+      expect(await screen.findByText("Estimated from JR's salary: about $3,100 a month at 67, in today's dollars.")).toBeInTheDocument();
+      expect(screen.getByTestId('live-said')).not.toHaveTextContent('Estimated');
+      upload();
+      await waitFor(() => expect(screen.getByTestId('live-said')).toHaveTextContent("3 years, 2005 to 2007. About $2,100 a month at 67, in today's dollars."));
+    });
+
+    it('a line that appears after the step opened is said', async () => {
+      const record = { source: 'record', years: 3, first: 2005, last: 2007, at_67_cents: 210_000 };
+      let added = false;
+      stubFetch({ '/api/profile': profileState(), '/api/auth/me': ME,
+        '/api/profile/benefits': () => reply(benefits(added ? { jr: record } : {})),
+        'POST /api/ss/import': () => { added = true; return reply({ person: 'jr', years: 3, first_year: 2005, last_year: 2007, skipped: 0, undo: 'r' }, 201); } });
+      atProfileLive('/profile/benefits/ss');
+      await screen.findAllByRole('button', { name: 'Add earnings record' });
+      upload();
+      await waitFor(() => expect(screen.getByTestId('live-said')).toHaveTextContent("3 years, 2005 to 2007. About $2,100 a month at 67, in today's dollars."));
     });
 
     it('a 422 shows the message and that nothing was saved', async () => {

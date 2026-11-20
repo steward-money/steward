@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useBookTo } from '../../book/BookContext';
 import { Button } from '../../ui/Button';
+import { Shown } from '../../ui/Live';
 import { AnswerText } from './aliasText';
 import { ApprovalCard, ViewerCard } from './ApprovalCard';
 import { aboutLine } from './aboutChip';
@@ -65,7 +66,7 @@ export function fromLive(l: LiveTurn, who: string): View {
 }
 
 function Working({ text }: { text: string }) {
-  return <p className="working" role="status"><CircleDashed size={20} aria-hidden="true" />{text}</p>;
+  return <Shown className="working"><CircleDashed size={20} aria-hidden="true" />{text}</Shown>;
 }
 
 function SawList({ items }: { items: Saw[] }) {

@@ -9,6 +9,7 @@ import json
 import re
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from sqlalchemy import Engine, case, func, select, tuple_
@@ -22,7 +23,8 @@ from steward import clock
 from steward.inventory.present import at_label, day_label, joined, size_label
 from steward_boundary import tools as T
 from steward_boundary.aliases import ALIAS_TOKEN_RE
-from steward_boundary.canonical import canonical, sha256_hex
+from steward_boundary.canonical import canonical
+from steward_boundary.store_rows import STORE_NAMES, masked_from, store_names
 
 PAGE = 50
 CHANNEL_LABELS = {"chat": "Chat", "mcp": "Claude Code", "prewarm": "Getting ready"}
@@ -42,6 +44,35 @@ def model_name(value: object) -> str | None:
 
 class RecordRefused(ValueError):
     """A part to record wasn't understood or didn't match its hash. Nothing was written."""
+
+
+@dataclass(frozen=True)
+class Approval:
+    """A manager's OK on one merchant_detail call's store rows (Task 6.5): who gave it, exactly the content the NAS sent
+    with it (their ticks applied), and the rows and payees they ticked ("r0", "p2"; public issue #53)."""
+    user_id: int
+    content: dict
+    ticked: frozenset[str] = frozenset()
+
+
+def as_approved(content: object, ok: Approval) -> bool:
+    """Whether `content` is the approved rows: byte for byte, or with some text of an unticked store or payee name
+    replaced by [name] (masked_from), which the gateway does to a person's name its model finds (public issue #53). A
+    ticked name, and every other field, must be exactly as approved. Text taken out passes; text put in never does."""
+    if not isinstance(content, dict):
+        return False
+    if canonical(content) == canonical(ok.content):
+        return True
+    shape = [(k, len(ok.content.get(k) or [])) for k, _, _ in STORE_NAMES]
+    if any(not isinstance(content.get(k), list) or len(content[k]) != n for k, n in shape):
+        return False
+    restored = json.loads(json.dumps(content))
+    approved = dict(((t, f), item) for t, item, f in store_names(ok.content))
+    for tick, item, field in store_names(restored):
+        before = approved[(tick, field)].get(field)
+        if tick not in ok.ticked and isinstance(item, dict) and masked_from(item.get(field), before):
+            item[field] = before
+    return canonical(restored) == canonical(ok.content)
 
 
 def _row(*, user_id, conversation_id, turn_id, seq, channel, part, raw: bytes, model, now,
@@ -65,10 +96,10 @@ def _store_rows(p: dict) -> bool:
 
 def record_parts(db: Session, *, user_id: int, conversation_id: int | None, turn_id: str, seq: int, channel: str,
                  model: str | None, parts: list[dict], now: datetime,
-                 approved: Mapping[str, tuple[int, str]] | None = None) -> list[int]:
-    """Writes each part before the gateway may send it. `approved` maps a merchant_detail call id to the manager who
-    approved its store rows and the SHA-256 of exactly the content they approved (Task 6.5): store rows nobody
-    approved, or rows that differ from the approved ones in any byte, are refused, so they are never sent."""
+                 approved: Mapping[str, Approval] | None = None) -> list[int]:
+    """Writes each part before the gateway may send it. `approved` maps a merchant_detail call id to its Approval
+    (Task 6.5): store rows nobody approved, or rows that differ from the approved ones in any byte other than a name
+    the gateway masked in an unticked row (as_approved), are refused, so they are never sent."""
     rows = []
     for p in parts:
         if p.get("part") not in OUTGOING_PARTS or not isinstance(p.get("payload"), dict):
@@ -81,9 +112,8 @@ def record_parts(db: Session, *, user_id: int, conversation_id: int | None, turn
             ok = (approved or {}).get(p["payload"].get("tool_use_id"))
             if ok is None:
                 raise RecordRefused("Store rows nobody approved aren't recorded or sent.")
-            approved_by, digest = ok
-            content = p["payload"].get("content")
-            if not isinstance(content, dict) or sha256_hex(content) != digest:
+            approved_by = ok.user_id
+            if not as_approved(p["payload"].get("content"), ok):
                 raise RecordRefused("Store rows that differ from the approved ones aren't recorded or sent.")
         rows.append(_row(user_id=user_id, conversation_id=conversation_id, turn_id=turn_id, seq=seq, channel=channel,
                          part=p["part"], raw=raw, model=model_name(model), now=now, approved_by=approved_by))

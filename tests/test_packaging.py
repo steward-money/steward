@@ -23,7 +23,7 @@ def test_the_nas_app_has_no_anthropic_dependency():
     p = _pyproject()
     assert "anthropic" not in {_name(d) for d in p["project"]["dependencies"]}
     groups = p["dependency-groups"]
-    assert "anthropic==1.11.0" in groups["gateway"]
+    assert "anthropic==2.8.0" in groups["gateway"]
     assert {"include-group": "gateway"} in groups["dev"]
     for heavy in ("gliner", "presidio-analyzer", "torch"):
         assert heavy not in {_name(d) for d in p["project"]["dependencies"]}

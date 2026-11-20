@@ -22,6 +22,7 @@ import { LazyOopsAcorn } from '../../ui/LazyOopsAcorn';
 import { Skeleton } from '../../ui/Skeleton';
 import { ManualAccountsList } from '../accounts/ManualAccounts';
 import { lazyScreen } from '../../lib/lazyScreen';
+import { Shown } from '../../ui/Live';
 import { BANK_TYPE_OPTIONS, failure, ownerOptions } from './shared';
 
 // The setup-token form is a lazy chunk shared with the first run (guided setup spec 11): only an unlinked card shows it.
@@ -117,7 +118,7 @@ export function SimplefinCard() {
           <Suspense fallback={<Skeleton lines={2} />}><LinkForm onLinked={linked} /></Suspense>
         </>
       )}
-      {result && <p role="status">{result}</p>}
+      {result && <Shown>{result}</Shown>}
       {error && <Notice tone="error">{error}</Notice>}
       <ConfirmSheet open={confirming} onClose={() => setConfirming(false)} title={UNLINK_TITLE} body={UNLINK_BODY}
         action={UNLINK} icon={Unlink} busy={busy === 'unlink'} onConfirm={() => void unlink()} returnTo={removal.returnTo} />

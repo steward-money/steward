@@ -1,6 +1,6 @@
 # Upgrade Steward
 
-Read this when a new version is out and you want to move to it.
+Read this when a new version is out and you want to move to it. Each version's notes on the [Releases page](https://github.com/steward-money/steward/releases) say what changed and anything to do before you upgrade.
 
 1. Back up first.
 

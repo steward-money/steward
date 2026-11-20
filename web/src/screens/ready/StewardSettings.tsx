@@ -4,6 +4,7 @@ import { SAVE, SAVED } from '../../lib/copy';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import { Field, FormError } from '../../ui/Field';
+import { Shown } from '../../ui/Live';
 import { saveGeneral, type InstallSettings } from './api';
 import { GATEWAY_NAME, SET_IN_FILE, STEWARD_SETTINGS, TIME_ZONE } from './copy';
 
@@ -63,7 +64,7 @@ export function StewardSettings({ s }: { s: InstallSettings['general'] }) {
         {error && <FormError>{error}</FormError>}
         <div className="ready__check">
           {changed && <Button type="submit" busy={busy}>{SAVE}</Button>}
-          {saved && <span role="status">{SAVED}</span>}
+          {saved && <Shown as="span">{SAVED}</Shown>}
         </div>
       </form>
     </Card>

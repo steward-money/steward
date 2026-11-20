@@ -23,8 +23,9 @@ const daysBack = (iso: string, n: number) => {
   d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
 };
-/** A plan saved ten days before the server's day (#17: Home names the saved plan by its date). */
-const saved = (h: Home) => `${daysBack(h.as_of as string, 10)}T19:00:00+00:00`;
+/** A plan saved ten days before the server's day (#17: Home names the saved plan by its date), as the household's day
+ *  the server sends (#52). */
+const saved = (h: Home) => daysBack(h.as_of as string, 10);
 /** A last look three days before the server's day, so Since shows in every state (Task 9 renders it). */
 const since = (h: Home, lines: unknown[], more = 0, nw: number | null = null) => {
   const day = daysBack(h.as_of as string, 3);
@@ -34,7 +35,7 @@ const since = (h: Home, lines: unknown[], more = 0, nw: number | null = null) =>
 /** The gate's three states: the demo's own answer, with the verdict, the figure, the signs and Since set for each. */
 const STATES: Record<string, (h: Home) => Home> = {
   steady: (h) => ({ ...h,
-    verdict: verdict('steady', [], [{ kind: 'spending_on_track' }, { kind: 'bills_paid' }, { kind: 'plan', age: 54, still: true, saved_at: saved(h) }], { best_month: true }),
+    verdict: verdict('steady', [], [{ kind: 'spending_on_track' }, { kind: 'bills_paid' }, { kind: 'plan', age: 54, still: true, saved_day: saved(h) }], { best_month: true }),
     flow: { ...h.flow, in_cents: 638_000, out_cents: 514_000, net_cents: 124_000, payday: null },
     signs: { ...h.signs, flexible: { spent_cents: 314_000, target_cents: 420_000, rows: [] }, bills: { paid: 5, of: 5, late: [] } },
     since: since(h, LINES, 2, 210_000) }),
@@ -44,7 +45,7 @@ const STATES: Record<string, (h: Home) => Home> = {
     signs: { ...h.signs, flexible: { spent_cents: 251_000, target_cents: 420_000, rows: [DINING] }, bills: { paid: 2, of: 5, late: [] } },
     since: since(h, LINES.slice(0, 2)) }),
   over: (h) => ({ ...h,
-    verdict: verdict('problem', [{ kind: 'late_bill', category: 'utilities', usual_day: 12 }], [{ kind: 'plan', age: 54, still: false, saved_at: saved(h) }], { stale: { n: 6, oldest_days: 29, newest_days: 29, account: null } }),
+    verdict: verdict('problem', [{ kind: 'late_bill', category: 'utilities', usual_day: 12 }], [{ kind: 'plan', age: 54, still: false, saved_day: saved(h) }], { stale: { n: 6, oldest_days: 29, newest_days: 29, account: null } }),
     flow: { ...h.flow, in_cents: 512_000, out_cents: 498_000, net_cents: 14_000, payday: null },
     signs: { ...h.signs, flexible: { spent_cents: 468_000, target_cents: 420_000, rows: [DINING, SHOPPING] },
       bills: { paid: 4, of: 5, late: [{ category: 'utilities', usual_day: 12 }] } },

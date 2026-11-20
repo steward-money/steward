@@ -463,6 +463,28 @@ def test_a_released_turn_after_a_send_records_the_reserved_amount(tmp_path, book
     assert _row(books, ours, prep.turn_id).cost_cents == spent
 
 
+@pytest.mark.parametrize("events, stop", [(2, "api_error"), (4, "dropped")], ids=["before-text", "mid-answer"])
+def test_a_stream_anthropic_breaks_ends_the_turn_like_a_drop_once_text_has_shown(tmp_path, books, ours, household,
+                                                                                events, stop):
+    """Review finding 5: when Anthropic's stream breaks, the gateway's done says "dropped" if some of the answer had
+    already shown, "api_error" if none had. Either way the NAS records the full charge the gateway made, ends the
+    conversation (its question has no answer) and logs a dropped turn as a gateway drop is logged."""
+    from tests.gateway.fake_anthropic import sse
+    half = sse(Reply([text("Dining is up about twelve percent on last year.")]))
+    with gateway_rig(tmp_path, lambda body, n: Reply([], sse=half[:events], cut=True)) as rig:
+        env = env_for(books, ours, household, rig.client)
+        prep = start_turn(env, "Are we spending more on dining?")
+        events_ = list(run_turn(env, prep))
+        spent = rig.client.health()["budget"]["spent_cents"]
+    done = events_[-1]
+    assert done["stop"] == stop and spent > 0 and done["cost_cents"] == spent
+    assert ("text" in [e["type"] for e in events_]) == (stop == "dropped")
+    with Session(books.engine_for(ours)) as db:
+        assert db.get(ChatConversation, prep.conversation_id).ended_at is not None
+        msgs = [e.message for e in db.scalars(select(EventLog).where(EventLog.kind == "chat"))]
+    assert msgs == (["The gateway stopped answering, so this answer is incomplete."] if stop == "dropped" else [])
+
+
 @pytest.mark.parametrize("line, shown", [
     ("Chat is turned off on Otter-PC.", "Chat is turned off on Otter-PC."),     # a gateway from before PR 4: as sent
     ("Chat is turned off on {gateway}.", "Chat is turned off on Zebra-Box."),   # one from after: this NAS's name

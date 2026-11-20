@@ -40,7 +40,7 @@ def test_0023_adds_the_columns_and_the_notes_table_and_backfills(settings):
     before = set(inspect(eng).get_table_names())
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         cols = {col["name"] for col in inspect(eng).get_columns("transaction")}
         assert {"guess_category", "guess_pct", "model_asked_at"} <= cols
         assert set(inspect(eng).get_table_names()) == before | {"transaction_note", "undo_entry", "reimburser", "trip", "reimburse_rule", "reimburse_settlement", "account_feed", "held_feed", "same_account_answer", "feed_txn_alias", "expense_ratio_override", "positions_mapping", "positions_import", "undo_text", "home_visit", "import_set", "import_layout", "import_hint", "statement_stage", "statement_layout"}

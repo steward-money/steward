@@ -33,8 +33,8 @@ export function usePlanSave(data: PlanReady, by: string): PlanSaver {
     const book = currentBook();
     try {
       const res = await savePlan(body);
-      const n: SavedNote = { planId: res.plan.id, at: res.plan.saved_at, by: res.plan.saved_by.name ?? by,
-        previous: data.plan ? { name: data.plan.saved_by.name, saved_at: data.plan.saved_at } : null };
+      const n: SavedNote = { planId: res.plan.id, at: res.plan.saved_at, day: res.plan.saved_day, by: res.plan.saved_by.name ?? by,
+        previous: data.plan ? { name: data.plan.saved_by.name, saved_day: data.plan.saved_day } : null };
       setSavedNote(n);
       setNote(n);
       setQueryDataIfStillIn<PlanResponse>(qc, book, ['plan'], (old) => (old && isReady(old) ? { ...old, plan: res.plan, levers: res.levers, result: res.result, inputs_summary: res.plan.inputs_summary ?? old.inputs_summary } : old));

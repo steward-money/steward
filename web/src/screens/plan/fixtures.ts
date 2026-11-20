@@ -24,7 +24,7 @@ export function summaryFixture(): InputsSummary {
 
 export function planFixture(): PlanReady {
   return structuredClone({
-    plan: { id: 7, saved_at: '2026-10-12T19:00:00+00:00', saved_by: { id: 2, name: 'Sam' }, engine_version: '2026.10.2',
+    plan: { id: 7, saved_at: '2026-10-12T19:00:00+00:00', saved_day: '2026-10-12', saved_by: { id: 2, name: 'Sam' }, engine_version: '2026.10.2',
       comfortable_age: 63, likely_age: 60, levers: {}, current: true, inputs_summary: summaryFixture() },
     previous: null,
     levers: { assumed: ASSUMED, try: TRY, pinned: [], try_notes: { spouse_earnings: 'No history yet' } },

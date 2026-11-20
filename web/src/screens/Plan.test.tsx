@@ -82,12 +82,12 @@ describe('Plan: five pages in one row (plan subpages decision 1)', () => {
 
   it('a 503 shows the message and the last saved ages with their date', async () => {
     stubFetch({ '/api/plan': () => reply({ error: "The plan couldn't be worked out right now.",
-      last_saved: { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00' } }, 503) });
+      last_saved: { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00', saved_day: '2026-10-12' } }, 503) });
     openPlan('/plan');
     expect(await screen.findByRole('alert')).toHaveTextContent("The plan couldn't be worked out right now.");
     const last = screen.getByTestId('last-saved');
     expect(last).toHaveTextContent('Comfortably at 63 · Likely at 60');
-    expect(last).toHaveTextContent(/From the plan saved Oct 1[23]/);
+    expect(last).toHaveTextContent('From the plan saved Oct 12');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 });

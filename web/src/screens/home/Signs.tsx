@@ -3,7 +3,7 @@ import type { SignsData } from '../../api/home';
 import type { BusinessReport } from '../../api/types';
 import { Link } from '../../book/links';
 import { label } from '../../lib/categories';
-import { dateLabelFromIso, dollars, money } from '../../lib/format';
+import { dateLabel, dollars, money } from '../../lib/format';
 import { Skeleton } from '../../ui/Skeleton';
 import * as C from './copy';
 
@@ -31,7 +31,7 @@ function bills(b: SignsData['bills']): Pick<Tile, 'text' | 'tone'> {
 /** #17: the saved plan's age, with when it was saved; Plan itself shows today's. `month` gives the year to leave out. */
 function plan(p: SignsData['plan'], month: string): Pick<Tile, 'text' | 'tone'> {
   if (p === null) return { text: C.PLAN_NONE, tone: 'muted' };
-  const saved = fill(C.PLAN_SAVED, { date: dateLabelFromIso(p.saved_at, `${month}-01`) });
+  const saved = fill(C.PLAN_SAVED, { date: dateLabel(p.saved_day, `${month}-01`) });
   return { text: `${p.age === null ? C.PLAN_NOT_BY_70 : fill(C.PLAN_AT, { age: p.age })} · ${saved}` };
 }
 

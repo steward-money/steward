@@ -14,6 +14,7 @@ import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import { ConfirmSheet } from '../../ui/ConfirmSheet';
 import { Field } from '../../ui/Field';
+import { Shown } from '../../ui/Live';
 import { MoneyInput } from '../../ui/MoneyInput';
 import { Notice } from '../../ui/Notice';
 import { RemovalLine } from '../../ui/RemovalLine';
@@ -41,7 +42,7 @@ function useRules() {
 }
 
 function Saving({ error, done }: { error: string | null; done: string | null }) {
-  return <>{error && <Notice tone="error">{error}</Notice>}{done && <p className="small muted" role="status">{done}</p>}</>;
+  return <>{error && <Notice tone="error">{error}</Notice>}{done && <Shown className="small muted">{done}</Shown>}</>;
 }
 
 function TypeCard({ s, onSaved }: { s: BusinessSettingsOut; onSaved: (n: BusinessSettingsOut) => void }) {

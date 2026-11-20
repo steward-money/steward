@@ -1,6 +1,7 @@
 import { Check, CircleCheck, Undo2 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Button } from '../../ui/Button';
+import { Shown } from '../../ui/Live';
 import type { SavedPlan } from './api';
 import { FIRST_SAVE, PLAN_NOT_UPDATED, PLAN_UPDATED, RESET, SAVE_THE_PLAN, UPDATE_THE_PLAN } from './copy';
 import { noteLine, type SavedNote } from './savedNote';
@@ -62,11 +63,11 @@ export function SaveBar({ plan, dirty, busy, error, note, onSave, onReset, now =
   }
   if (!note) return null;
   return (
-    <div className="savebar savebar--done" role="status" data-testid="savebar-done">
+    <Shown as="div" className="savebar savebar--done" data-testid="savebar-done">
       <div className="savebar__text">
         <span><CircleCheck className="i" size={20} aria-hidden="true" />{PLAN_UPDATED}</span>
         <span className="small muted">{noteLine(note, now)}</span>
       </div>
-    </div>
+    </Shown>
   );
 }

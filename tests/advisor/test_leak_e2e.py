@@ -40,7 +40,7 @@ from tests.advisor.rig import gateway_rig
 from tests.factories import make_person
 from tests.gateway.fake_anthropic import Reply, text, tool_use
 from tests.gateway.fakes import THIRD_PARTY_NAMES
-from tests.waiting import wait_until, when_waiting
+from tests.waiting import when_waiting
 
 TODAY = date(2026, 10, 19)
 NOW = datetime(2026, 10, 19, 17, tzinfo=timezone.utc)
@@ -355,6 +355,58 @@ def test_nothing_identifying_reaches_anthropic_and_every_part_matches_the_log(tm
         assert not [w for _, w in ABOUT_NEEDLES if w.casefold() in line.casefold()]
 
 
+class Ticking(Answering):
+    """Answers send, with these rows ticked when the card offers them."""
+
+    def __init__(self, user_id: int, book_id: int, ticked=()):
+        super().__init__(user_id, book_id, send=True)
+        self.ticks = list(ticked)
+
+    def answer(self, turn_id, call_id, user_id, book_id, send, digest=None, ticked=()):
+        return super().answer(turn_id, call_id, user_id, book_id, send, digest, ticked=self.ticks)
+
+
+def test_a_name_the_model_finds_in_an_unticked_approved_row_never_reaches_anthropic(tmp_path, books, world):
+    """Public issue #53, end to end: the NAS sends a card-merchant row "Tom Becker Plumbing" (no transfer words, so no
+    tick on the card) and a Zelle row; the real gateway masks the name its model finds, the NAS records the masked
+    rows as approved, and Anthropic gets "[name] Plumbing". The Zelle row, ticked, keeps the name the card showed."""
+    book, (jr, _) = world["household"]
+    with Session(books.engine_for(book)) as db:
+        acct = db.scalar(select(Account.id).where(Account.type == AccountType.checking).order_by(Account.id))
+        db.add_all([Transaction(account_id=acct, posted_at=date(2026, 10, 15), amount_cents=-18_500,
+                                raw_description="TOM BECKER PLUMBING", merchant="Tom Becker Plumbing",
+                                category="home", category_source=CategorySource.none),
+                    Transaction(account_id=acct, posted_at=date(2026, 10, 14), amount_cents=-2_500,
+                                raw_description="ZELLE PAYMENT TO PRIYA NAIR 0412", category="gifts",
+                                category_source=CategorySource.none)])
+        db.commit()
+    for ticked in ([], ["zelle"]):
+        with gateway_rig(tmp_path / str(len(ticked)), ScriptedModel()) as rig:
+            control = Ticking(jr, book.id)
+            env = env_for(books, book, jr, rig.client, control)
+            prep = start_turn(env, "Who did we pay in October?")
+            turn = run_turn(env, prep)
+            events = []
+            for e in turn:
+                events.append(e)
+                if e.get("type") == "approval" and e.get("state") == "ask":
+                    rows = e["card"]["rows"]
+                    control.ticks = [f"r{i}" for i, r in enumerate(rows) if ticked and r["full"]]
+            assert events[-1]["stop"] == "end_turn", events[-1]
+            card = next(e for e in events if e.get("type") == "approval" and e.get("state") == "ask")["card"]
+            plumber = next(r for r in card["rows"] if r["store"] == "Tom Becker Plumbing")
+            assert plumber["full"] is None                      # the card offers no tick for it
+            sent = canonical(list(rig.fake.requests)).decode()
+            assert "Tom Becker" not in sent and "[name] Plumbing" in sent
+            assert ("Priya Nair" in sent) == bool(ticked)
+        with Session(books.engine_for(book)) as db:
+            [row] = db.scalars(select(AdvisorOutgoing).where(AdvisorOutgoing.part == "merchant_rows",
+                                                             AdvisorOutgoing.turn_id == prep.turn_id))
+            merchants = [r["merchant"] for r in json.loads(row.payload)["content"]["rows"]]
+            assert row.approved_by == jr and "[name] Plumbing" in merchants and "Tom Becker Plumbing" not in merchants
+            assert ("Zelle to Priya Nair" in merchants) == bool(ticked)
+
+
 def test_the_nas_connects_to_nothing_but_the_gateway(tmp_path, books, world, monkeypatch):
     book, (jr, _) = world["household"]
     seen = []
@@ -376,32 +428,47 @@ def test_the_nas_connects_to_nothing_but_the_gateway(tmp_path, books, world, mon
     assert seen and {a[1] for a in seen} == {port}
 
 
+DROP_START = {"type": "start", "protocol": PROTOCOL, "turn_id": "t_00000000000000a1", "book_id": 1, "user_id": 2,
+              "question": "Are we spending more on dining than last year?",
+              "context": {"today": "2026-10-19", "book_kind": "household", "asker": "Person 1"}, "history": [],
+              "fingerprints": {"salt": "2" * 32, "hashes": []}, "issued": []}
+
+
+def ledger_statuses(rig) -> list[str]:
+    c = sqlite3.connect(rig.cfg.ledger_path)
+    try:
+        return [r[0] for r in c.execute("SELECT status FROM spend ORDER BY id")]
+    finally:
+        c.close()
+
+
+# Both drop tests read the ledger only once the rig has closed. Its server stops only after every connection's handler
+# has returned (uvicorn waits on them, and serve_in_thread joins the server thread and fails if it hasn't stopped), so
+# the turn has been cancelled and its reservation, if it made one, unwound: nothing can still change the ledger or reach
+# the fake. That is the event these tests wait for, rather than polling the ledger for a state with a deadline.
 def test_a_nas_that_drops_right_after_the_redacted_frame_sends_nothing_and_releases_the_reservation(tmp_path):
     """Review focus: the NAS dies with no cancel frame. The gateway sends nothing to Anthropic and leaves nothing
-    reserved."""
-    start = {"type": "start", "protocol": PROTOCOL, "turn_id": "t_00000000000000a1", "book_id": 1, "user_id": 2,
-             "question": "Are we spending more on dining than last year?",
-             "context": {"today": "2026-10-19", "book_kind": "household", "asker": "Person 1"}, "history": [],
-             "fingerprints": {"salt": "2" * 32, "hashes": []}, "issued": []}
+    reserved. The gateway reserves after its checks, which run after the redacted frame, so the drop can land before
+    the reservation (the turn is cancelled with none made) or after it (it is released): both leave nothing reserved."""
     with gateway_rig(tmp_path, ScriptedModel()) as rig:
-        def statuses():
-            c = sqlite3.connect(rig.cfg.ledger_path)
-            try:
-                return [r[0] for r in c.execute("SELECT status FROM spend ORDER BY id")]
-            finally:
-                c.close()
-
-        def settled():
-            rows = statuses()
-            return bool(rows) and "reserved" not in rows
-
         with rig.client.connect() as ws:
-            ws.send(json.dumps(start))
+            ws.send(json.dumps(DROP_START))
             frame = json.loads(ws.recv(timeout=10))
             assert frame["type"] == "redacted"
             ws.socket.close()      # abruptly: no close handshake, no cancel frame
-        wait_until(settled, "the gateway to release the reservation")
-    # The rig is closed and its server threads joined, so no request can still be on its way to the fake: what it
-    # holds now is all it will ever get.
-    assert statuses() == ["released"]         # one reservation, released: not left open, not charged, not missing
+    assert ledger_statuses(rig) in ([], ["released"])   # nothing left open, nothing charged
+    assert rig.fake.requests == []
+
+
+def test_a_nas_that_drops_with_the_reservation_open_sends_nothing_and_releases_it(tmp_path):
+    """The record frame comes only after the reservation, so a NAS that dies on it leaves one open for certain: the
+    gateway releases it and sends nothing to Anthropic."""
+    with gateway_rig(tmp_path, ScriptedModel()) as rig:
+        with rig.client.connect() as ws:
+            ws.send(json.dumps(DROP_START))
+            assert json.loads(ws.recv(timeout=10))["type"] == "redacted"
+            assert json.loads(ws.recv(timeout=10))["type"] == "record"
+            assert ledger_statuses(rig) == ["reserved"]
+            ws.socket.close()      # abruptly, before "recorded": no close handshake, no cancel frame
+    assert ledger_statuses(rig) == ["released"]   # one reservation, released: not left open, not charged, not missing
     assert rig.fake.requests == []

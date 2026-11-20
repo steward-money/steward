@@ -19,7 +19,7 @@ def test_change_own_password_keeps_this_device_and_signs_out_others(client, db):
     r = client.post("/api/auth/password", json={"current_password": "pw-one-two-3", "new_password": "new-pw-four-5678"})
     assert r.status_code == 204
     assert client.get("/api/auth/me").status_code == 200   # B, the device that made the change, stays signed in
-    client.cookies.set(HOST_SESSION, cookie_a)
+    client.cookies.set(HOST_SESSION, cookie_a, domain="nas.tail1234.ts.net")   # in place of B
     assert client.get("/api/auth/me").status_code == 401   # A was signed out
     client.cookies.clear()
     assert client.post("/api/auth/login", json={"username": "jr", "password": "new-pw-four-5678"}).status_code == 200

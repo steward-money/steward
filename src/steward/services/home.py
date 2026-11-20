@@ -19,7 +19,7 @@ from steward.services import home_since as hs
 from steward.services import networth
 from steward.services import spending as sp
 from steward.services.feeds import NEW_ACCOUNT_MSG
-from steward.services.plan import plan_history
+from steward.services.plan import plan_history, saved_on
 from steward.services.reimburse import owed_by
 from steward.services.same_account.questions import open_count
 from steward.services.spending import ym
@@ -33,6 +33,7 @@ MAX_PROBLEMS = 2               # P2
 MAX_SOFT = 2
 MAX_GOOD_WITH_PROBLEM = 2
 MAX_GOOD = 3
+OLD_SAVED_AT = "saved_at"      # the plan sign's and clause's instant, sent for 0.1.1's open tabs; see _plan
 NEW_MONTH_DAYS = 3             # days 1-3 open with "A new month."
 MORE_OUT_DAY = 8               # "more out than in" from day 8
 JOY_DAY = 21                   # P40: the best-month line from day 21
@@ -123,7 +124,7 @@ def verdict(*, empty: bool, day: int, net: int, payday_day: int | None, typical_
             plan: dict | None, stale: dict | None, best_month: bool) -> dict:
     """The headline's signals, in the spec's priority order (The headline, Building it). `flexible` is flexible_rows,
     `bills` the Bills of watched_rows, `overdrawn` (name, cents) per checking account below $0, `plan` {age, still,
-    saved_at}."""
+    saved_day} (and, for one release, saved_at)."""
     if empty:
         return {"opener": "empty", "problems": [], "clauses": [], "stale": None, "best_month": False}
     problems: list[dict] = []
@@ -159,7 +160,10 @@ def verdict(*, empty: bool, day: int, net: int, payday_day: int | None, typical_
     if expected and all(b["state"] not in UNPAID for b in expected):
         good.append({"kind": "bills_paid"})
     if plan is not None and plan["age"] is not None:
-        good.append({"kind": "plan", "age": plan["age"], "still": plan["still"], "saved_at": plan["saved_at"]})
+        clause = {"kind": "plan", "age": plan["age"], "still": plan["still"], "saved_day": plan["saved_day"]}
+        if OLD_SAVED_AT in plan:                                   # one release only, as in _plan
+            clause[OLD_SAVED_AT] = plan[OLD_SAVED_AT]
+        good.append(clause)
 
     new_month = day <= NEW_MONTH_DAYS
     if problems:
@@ -223,14 +227,19 @@ def _income_rows(db: Session, start: date, end: date) -> list[tuple[date, int, d
 def _plan(db: Session, look_at: datetime | None) -> dict | None:
     """P13: the newest saved plan's comfortable age and when it was saved, so Home never solves. #17: Plan shows today's
     solve, which would cost Home a build of the plan's inputs and, cold, a solve, so the web says the saved date
-    instead. "Still" when the newest save is older than the last look, or has the same age as the save before it."""
+    instead, as the household's day (#52: not the instant, which a browser would read in its own zone). "Still" when
+    the newest save is older than the last look, or has the same age as the save before it."""
     saved = plan_history(db, 2)
     if not saved:
         return None
     newest = saved[0]
     still = ((look_at is not None and newest.saved_at < look_at)
              or (len(saved) > 1 and saved[1].comfortable_age == newest.comfortable_age))
-    return {"age": newest.comfortable_age, "still": still, "saved_at": newest.saved_at.isoformat()}
+    return {"age": newest.comfortable_age, "still": still, "saved_day": saved_on(newest.saved_at).isoformat(),
+            # One release only: a tab still running 0.1.1's bundle names the plan by saved_at until it reloads. Remove
+            # after 0.1.2, like 0.1.0's session cookie name (tests/test_home_api.py fails from 0.1.3 on). The web
+            # reads saved_day.
+            OLD_SAVED_AT: newest.saved_at.isoformat()}
 
 
 def _one_question_name(db: Session) -> str | None:

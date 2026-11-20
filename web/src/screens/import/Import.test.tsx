@@ -491,7 +491,7 @@ describe('the receipt and the hiccups (phase 17 spec 3.7)', () => {
     await toPreview();
     fireEvent.click(screen.getByRole('button', { name: 'Import 2,486' }));
     expect(await screen.findByTestId('import-done')).toHaveTextContent('2,486 rows in. 12 to sort in Review.');
-    expect(screen.getByTestId('import-done')).toHaveAttribute('role', 'status');
+    expect(screen.getByTestId('import-done')).not.toHaveAttribute('role');     // said through the polite region (issue #51)
     expect(screen.getByText('Imported 2,486 into 3 accounts')).toBeInTheDocument();       // the receipt and its Undo stay
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
   });

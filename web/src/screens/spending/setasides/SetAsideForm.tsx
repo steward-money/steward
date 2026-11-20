@@ -8,6 +8,7 @@ import { dollars } from '../../../lib/format';
 import { radioKeys, radioTab } from '../../../lib/radioKeys';
 import { Button } from '../../../ui/Button';
 import { Field } from '../../../ui/Field';
+import { Shown } from '../../../ui/Live';
 import { MoneyInput } from '../../../ui/MoneyInput';
 import { Notice } from '../../../ui/Notice';
 import { dollarsText } from '../../settings/money';
@@ -197,11 +198,11 @@ export function SetAsideForm({ initial, asOf, accounts, busy, error, submitLabel
       </Field>
       <Field label={C.NOTES_LABEL}><input value={d.notes} maxLength={500} onChange={(e) => set({ notes: e.target.value })} /></Field>
       {lines && (
-        <div className="sa-preview" data-testid="sa-preview" aria-live="polite">
+        <Shown as="div" className="sa-preview" data-testid="sa-preview">
           <span>{lines.when}</span>
           <span className="money money--m">{lines.monthly}</span>
           {lines.more.length > 0 && <span className="sa-preview__more small muted">{lines.more.join(' · ')}</span>}
-        </div>
+        </Shown>
       )}
       {dropsTag && <p className="small muted" data-testid="sa-tag-drops">{C.TAG_DROPS}</p>}
       {pvError && <p className="sa-field-error" role="alert">{pvError}</p>}

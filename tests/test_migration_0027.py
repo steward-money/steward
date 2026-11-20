@@ -45,7 +45,7 @@ def test_0027_adds_feeds_backfills_one_per_simplefin_account_and_downgrade_drops
     run_migrations(eng)
     i = inspect(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         feeds = c.execute(text("SELECT account_id, external_id, institution_id, name, added_at, last_seen_at "
                                "FROM account_feed ORDER BY account_id")).all()
         assert [tuple(f) for f in feeds] == [

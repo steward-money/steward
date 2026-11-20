@@ -32,7 +32,7 @@ def test_0036_adds_the_statement_tables_and_leaves_old_rows(settings):
     eng = _at_0035(settings)
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         for table in ("statement_stage", "statement_layout"):
             assert c.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0
         assert c.execute(text("SELECT filename, period_start, period_end, pages, check_state, check_gap_cents, "

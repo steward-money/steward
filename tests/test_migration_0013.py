@@ -14,7 +14,7 @@ def test_0013_adds_chat_turn_and_downgrades_cleanly(settings):
     run_migrations(eng)
     assert set(inspect(eng).get_table_names()) == before | {"chat_turn", "business_rule", "business_state", "care_setup", "care_quote", "care_scenario", "tax_state", "spending_target", "spending_prefs", "set_aside", "set_aside_match", "set_aside_dismissed", "transaction_note", "undo_entry", "reimburser", "trip", "reimburse_rule", "reimburse_settlement", "account_feed", "held_feed", "same_account_answer", "feed_txn_alias", "expense_ratio_override", "positions_mapping", "positions_import", "undo_text", "home_visit", "import_set", "import_layout", "import_hint", "statement_stage", "statement_layout"}
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
     assert {c["name"] for c in inspect(eng).get_columns("chat_turn")} == {
         "id", "conversation_id", "turn_id", "user_id", "asked", "sent", "chips", "steps", "stop", "line", "cost_cents",
         "ms", "approval", "store_rows", "approved_by", "about", "started_at", "ended_at"}

@@ -28,7 +28,7 @@ def test_0037_adds_the_columns_and_keeps_old_imports(settings):
     eng = _at_0036(settings)
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert c.execute(text("SELECT filename, source, set_id, batch_id, period_start, check_state, balance_cents, "
                               "snapshot_as_of, rolled_back_at FROM positions_import")).all() == \
             [("betterment.csv", "csv", None, None, None, None, None, None, None)]

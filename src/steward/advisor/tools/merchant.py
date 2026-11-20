@@ -9,7 +9,8 @@ or a wire, holds a transfer word or a name field, or has a payment or deposit wo
 it (_channel_title, the word lists above it). A row is read on its own bank line, and also on every line Steward holds
 for its payee, in either book, when it goes under a name its line doesn't hold (one Review or a rule gave it). A payee
 asked for by alias is read on all of its lines, and is masked when there are none. The rows this returns are exactly
-what the card shows and what is sent when nothing is ticked."""
+what the card shows and what the NAS sends when nothing is ticked. The gateway then replaces a person's name its model
+finds in each unticked row with [name] (public issue #53; turn.py sends the ticks beside the rows)."""
 from __future__ import annotations
 
 import re

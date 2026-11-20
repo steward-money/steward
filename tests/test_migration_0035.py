@@ -28,7 +28,7 @@ def test_0035_adds_the_layout_tables_and_leaves_old_batches(settings):
     eng = _at_0034(settings)
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         for table in ("import_layout", "import_hint", "import_set"):
             assert c.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0
         assert c.execute(text("SELECT filename, row_count, set_id, layout_id, content_sha256 FROM import_batch")).all() == \

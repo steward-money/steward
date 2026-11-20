@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { SetAsideRow } from '../../../api/types';
 import { wrapBook } from '../../../test-utils';
+import { LiveRegions } from '../../../ui/Live';
 import { coveredEarly, CoveredLine, FirstLine, freshCover } from './Moments';
 
 const row = (over: Partial<SetAsideRow>): SetAsideRow => ({
@@ -28,8 +29,11 @@ describe('set-aside moments (phase 17 spec 3.7)', () => {
   });
 
   it('the line names the set-aside and the time to spare, with the sprout', () => {
-    wrapBook(<CoveredLine rows={[row({})]} />);
+    wrapBook(<LiveRegions><CoveredLine rows={[row({})]} /></LiveRegions>);
     expect(screen.getByTestId('sa-covered')).toHaveTextContent('Property tax is covered, with 3 weeks to spare.');
+    // Issue #51: said through the page's polite region; the line is not a live region that appears with its words.
+    expect(screen.getByTestId('sa-covered')).not.toHaveAttribute('role');
+    expect(screen.getByTestId('live-said')).toHaveTextContent('Property tax is covered, with 3 weeks to spare.');
   });
 
   it("the first set-aside: the month it's due won't sting", () => {

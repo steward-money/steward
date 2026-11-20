@@ -1,13 +1,19 @@
 """The model loop against the fake Anthropic server, with a scripted NAS on the other side of the frames."""
 import asyncio
+import json
+import threading
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import anthropic
+import httpcore2
+import httpx2
 import pytest
 
 from steward_boundary import PROTOCOL
 from steward_boundary.canonical import canonical
 from steward_boundary.tools import DECLINED
+from steward_gateway.app import make_client
 from steward_gateway.config import MAX_TOKENS
 from steward_gateway.prices import estimate_nd, reserve_price
 from steward_gateway.prompt import request_body
@@ -15,8 +21,9 @@ from steward_gateway.config import FALLBACK_BETA
 from steward_gateway.ledger import Ledger
 from steward_gateway.loop import TurnDeps, run_turn
 from steward_gateway.mac import load_or_create_key, mac
+from steward_gateway import sending
 from steward_gateway.redact.patterns import PatternDetector
-from tests.gateway.fake_anthropic import FakeAnthropic, Reply, text, thinking, tool_use
+from tests.gateway.fake_anthropic import FakeAnthropic, Reply, sse, text, thinking, tool_use
 from tests.gateway.fakes import NameListDetector
 from tests.servers import serve_in_thread
 from tests.waiting import CEILING
@@ -62,11 +69,12 @@ class FakeNas:
 
 def turn(cfg, script, start=None, nas=None, cap_cents=1000, stopped=False, with_client=True, detectors=None):
     fake, nas = FakeAnthropic(script), nas or FakeNas()
-    ledger = Ledger(cfg.ledger_path, cfg.timezone, cap_cents, cfg.max_cap_cents, cfg.default_model)
+    ledger = SpyLedger(cfg.ledger_path, cfg.timezone, cap_cents, cfg.max_cap_cents, cfg.default_model)
     key = load_or_create_key(cfg.history_key_path)
     with serve_in_thread(fake.app()) as url:
         async def go():
-            client = anthropic.AsyncAnthropic(api_key="test-key-not-real", base_url=url, max_retries=0) if with_client else None
+            # The gateway's own client, so the tests send what the gateway sends
+            client = make_client(replace(cfg, anthropic_base_url=url), "test-key-not-real") if with_client else None
             deps = TurnDeps(config=cfg, ledger=ledger, client=client, mac_key=key, stopped=lambda: stopped, now=lambda: NOW,
                             detectors=[PatternDetector(), NameListDetector()] if detectors is None else detectors)
             try:
@@ -91,12 +99,41 @@ def test_a_plain_answer_is_recorded_first_then_streamed(gw_cfg):
     assert body["thinking"] == {"type": "adaptive"} and body["output_config"] == {"effort": "medium"}
     assert body["fallbacks"] == "default" and body["tool_choice"] == {"type": "auto"}
     assert body["cache_control"] == {"type": "ephemeral"}
-    assert FALLBACK_BETA in fake.headers[0]["anthropic-beta"]
+    assert fake.headers[0]["anthropic-beta"] == FALLBACK_BETA
     assert body["messages"][-2] == {"role": "user", "content": [{"type": "text",
                                                                  "text": "Are we spending more on dining than last year?"}]}
     assert body["messages"][-1] == {"role": "system", "content": "Today is Tuesday, October 20, 2026. This is a "
                                                                  "household book. The person asking is Person 1."}
     assert ledger.state(NOW, gw_cfg)["spent_cents"] >= 0 and ledger.state(NOW, gw_cfg)["reserved_cents"] == 0
+
+
+# The headers a request to Anthropic may carry, besides the SDK's own x-stainless-* ones (OS, runtime, retry count).
+SENT_HEADERS = {"host", "accept", "accept-encoding", "connection", "content-type", "content-length", "user-agent",
+                "authorization", "anthropic-version", "anthropic-beta"}
+
+
+def assert_sent_headers(h: dict, beta: str | None) -> None:
+    """One request's headers: the key once, as a bearer token; the API version the gateway was tested on; exactly the
+    beta named, or none; and no header outside SENT_HEADERS."""
+    assert h["authorization"] == "Bearer test-key-not-real" and "x-api-key" not in h
+    assert h["anthropic-version"] == "2026-10-21"
+    assert h.get("anthropic-beta") == beta
+    assert {k for k in h if k not in SENT_HEADERS and not k.startswith("x-stainless-")} == set()
+
+
+def test_each_request_carries_the_key_once_and_no_header_outside_the_list(gw_cfg):
+    """anthropic 2.x (API version 2026-10-21) sends the key as Authorization: Bearer, where 1.x sent X-Api-Key. Every
+    request carries the key once, the API version the gateway was tested on, the fallback beta and no other, and no
+    header outside SENT_HEADERS: no trace context from the SDK's OpenTelemetry support (traceparent, baggage), and
+    nothing a later SDK adds unreviewed."""
+    def script(body, n):
+        if n == 1:
+            return Reply([tool_use("toolu_01", "accounts", {"include_closed": False})], stop_reason="tool_use")
+        return Reply([text("done")])
+    done, fake, *_ = turn(gw_cfg, script)
+    assert done["stop"] == "end_turn" and len(fake.headers) == 2
+    for h in fake.headers:
+        assert_sent_headers(h, beta=FALLBACK_BETA)
 
 
 def test_the_question_is_redacted_before_it_is_checked_and_sent(gw_cfg):
@@ -186,10 +223,14 @@ def test_busy_releases_the_reservation(gw_cfg):
     assert st["spent_cents"] == 0 and st["reserved_cents"] == 0
 
 
-def test_overloaded_and_other_errors(gw_cfg):
-    assert turn(gw_cfg, lambda b, n: Reply([], status=529, error_type="overloaded_error"))[0]["stop"] == "busy"
-    assert turn(gw_cfg, lambda b, n: Reply([], status=500))[0]["stop"] == "api_error"
-    assert turn(gw_cfg, lambda b, n: Reply([], status=401, error_type="authentication_error"))[0]["stop"] == "not_set_up"
+@pytest.mark.parametrize("status, kind, stop", [
+    (529, "overloaded_error", "busy"), (503, "api_error", "busy"), (500, "api_error", "api_error"),
+    (408, "timeout_error", "api_error"), (401, "authentication_error", "not_set_up")])
+def test_overloaded_and_other_errors(gw_cfg, status, kind, stop):
+    """503 means try again shortly, so it reads as busy like 429 and 529; 408 says the request itself timed out, so it
+    stays "couldn't answer". Each is a refusal with an error status: nothing to bill."""
+    done, _, _, ledger, _ = turn(gw_cfg, lambda b, n: Reply([], status=status, error_type=kind))
+    assert done["stop"] == stop and statuses(ledger) == ["released"] and done["cost_nd"] == 0
 
 
 def test_refusal_and_max_tokens(gw_cfg):
@@ -290,6 +331,62 @@ def test_an_empty_store_name_result_goes_as_an_ordinary_tool_result(gw_cfg):
     second = nas.of("record")[1]
     assert [p["part"] for p in second["parts"]] == ["tool_result"]
     assert second["parts"][0]["payload"]["content"] == empty
+
+
+PLUMBER = {**MERCHANT_CONTENT, "rows": [{**MERCHANT_CONTENT["rows"][0], "merchant": "Tom Becker Plumbing"},
+                                        MERCHANT_CONTENT["rows"][0]]}
+
+
+def ticking(content, ticked=None):
+    def results(calls):
+        out = [{"id": c["id"], "name": c["name"], "content": content, "error": None} for c in calls]
+        return [{**r, "ticked": ticked} for r in out] if ticked is not None else out
+    return results
+
+
+def sent_rows(fake):
+    """The store rows in the tool_result Claude got, decoded from the block the gateway sent."""
+    block = next(b for m in fake.requests[1]["messages"] if m["role"] == "user" and isinstance(m["content"], list)
+                 for b in m["content"] if b.get("type") == "tool_result")
+    return json.loads(block["content"])
+
+
+def test_an_unticked_approved_row_goes_with_a_name_the_model_finds_as_name(gw_cfg):
+    """Public issue #53: the gateway replaces the name before the row is recorded, so the log, the conversation and
+    Claude all get "[name] Plumbing"; the store's own row is unchanged."""
+    done, fake, nas, _, _ = turn(gw_cfg, merchant_script, nas=FakeNas(results=ticking(PLUMBER, [])))
+    assert done["stop"] == "end_turn"
+    recorded = nas.of("record")[1]["parts"][0]["payload"]["content"]
+    assert [r["merchant"] for r in recorded["rows"]] == ["[name] Plumbing", "StreamBox"]
+    assert sent_rows(fake) == recorded
+    assert "Tom Becker" not in canonical(fake.requests).decode()
+    assert "Tom Becker" not in canonical([f for f in nas.frames if f["type"] in ("sent", "assistant")]).decode()
+
+
+def test_a_result_with_no_ticks_counts_as_nothing_ticked(gw_cfg):
+    done, fake, nas, _, _ = turn(gw_cfg, merchant_script, nas=FakeNas(results=ticking(PLUMBER)))
+    assert done["stop"] == "end_turn"
+    assert sent_rows(fake)["rows"][0]["merchant"] == "[name] Plumbing"
+
+
+def test_a_ticked_row_keeps_the_name_and_the_tick_never_reaches_claude(gw_cfg):
+    done, fake, nas, _, _ = turn(gw_cfg, merchant_script, nas=FakeNas(results=ticking(PLUMBER, ["r0"])))
+    assert done["stop"] == "end_turn"
+    assert sent_rows(fake) == PLUMBER == nas.of("record")[1]["parts"][0]["payload"]["content"]
+    sent = canonical(fake.requests).decode()
+    assert "ticked" not in sent and '"r0"' not in sent
+    assert "ticked" not in canonical(nas.of("record")).decode()
+
+
+def test_ticks_on_another_tools_result_change_nothing_and_a_bad_tick_is_refused(gw_cfg):
+    def script(body, n):
+        if n == 1:
+            return Reply([tool_use("toolu_a", "accounts", {"include_closed": False})], stop_reason="tool_use")
+        return Reply([text("Done.")])
+    done, fake, nas, _, _ = turn(gw_cfg, script, nas=FakeNas(results=ticking(ACCOUNTS, ["r0"])))
+    assert done["stop"] == "end_turn" and "ticked" not in canonical(fake.requests).decode()
+    done, fake, nas, _, _ = turn(gw_cfg, merchant_script, nas=FakeNas(results=ticking(PLUMBER, ["Tom Becker"])))
+    assert done["stop"] == "bad_request" and len(fake.requests) == 1
 
 
 def test_a_result_under_another_tools_name_is_refused(gw_cfg):
@@ -634,3 +731,253 @@ def test_a_care_about_turn_that_calls_care_projection_completes(gw_cfg):
     assert (frame["stop"], frame["check"], frame["path"]) == ("end_turn", None, None)
     assert len(fake.requests) == 2
     assert [p["part"] for p in nas.of("record")[1]["parts"]] == ["tool_result"]
+
+
+# --- When a request may have gone out (Argon, on the anthropic 2.x bump): released only when certainly nothing was
+# sent, settled at the reservation otherwise. These run the real SDK, httpx2 and httpcore2; only a network wait or
+# failure is stood in for.
+
+def cancel_turn(cfg, script, ready, release=None):
+    """A turn on the gateway's own client, cancelled (Stop, or the NAS gone) once `ready()` returns. `release` frees a
+    fake answer the script is holding; it runs before the fake server stops, because the server waits for every
+    handler to finish and refuses to leave one still running (tests/servers.serve_in_thread)."""
+    fake, nas = FakeAnthropic(script), FakeNas()
+    ledger = SpyLedger(cfg.ledger_path, cfg.timezone, 1000, cfg.max_cap_cents, cfg.default_model)
+    with serve_in_thread(fake.app()) as url:
+        async def go():
+            client = make_client(replace(cfg, anthropic_base_url=url), "test-key-not-real")
+            deps = TurnDeps(config=cfg, ledger=ledger, client=client, mac_key=load_or_create_key(cfg.history_key_path),
+                            stopped=lambda: False, now=lambda: NOW, detectors=[PatternDetector(), NameListDetector()])
+            try:
+                task = asyncio.create_task(run_turn(start_frame(), nas, deps))
+                await asyncio.wait_for(ready(), CEILING)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            finally:
+                await client.close()
+        try:
+            asyncio.run(go())
+        finally:
+            if release:
+                release()
+    return fake, nas, ledger
+
+
+def network_wait(monkeypatch, where="connect"):
+    """The request's connect (DNS and TCP) or its wait for a pooled connection hangs. Returns an event set once it
+    does."""
+    entered = asyncio.Event()
+
+    async def hang(*args, **kwargs):
+        entered.set()
+        await asyncio.Event().wait()
+    if where == "connect":
+        monkeypatch.setattr(httpcore2._backends.auto.AutoBackend, "connect_tcp", hang)
+    else:
+        monkeypatch.setattr(httpcore2._async.connection_pool.AsyncPoolRequest, "wait_for_connection", hang)
+    return entered
+
+
+def rename_the_trace(monkeypatch):
+    """httpcore2's trace as a later version might send it: the event steward_gateway.sending waits for never fires."""
+    real = httpcore2._trace.Trace.atrace
+
+    async def renamed(self, name, info):
+        await real(self, name.replace("send_request_headers", "write_request_headers"), info)
+    monkeypatch.setattr(httpcore2._trace.Trace, "atrace", renamed)
+
+
+@pytest.mark.parametrize("where", ["connect", "pool"])
+def test_a_cancel_before_the_request_goes_out_releases_the_reservation(gw_cfg, monkeypatch, where):
+    """Argon 2.1: a Stop while the client is still resolving and connecting (connect_tcp does both) or waiting for a
+    pooled connection has written nothing, so it releases and the done frame carries no cost. That is believed once
+    this process has seen the client's trace work, as it has after its first request."""
+    monkeypatch.setattr(sending, "_traced", True)
+    entered = network_wait(monkeypatch, where)
+    fake, nas, ledger = cancel_turn(gw_cfg, lambda b, n: Reply([text("never sent")]), entered.wait)
+    assert fake.requests == [] and statuses(ledger) == ["released"] and nothing_open(ledger, gw_cfg)
+    (done,) = nas.of("done")
+    assert (done["stop"], done["requests"], done["cost_nd"]) == ("cancelled", 1, 0)
+
+
+def test_a_request_that_goes_out_shows_the_trace_works(gw_cfg, monkeypatch):
+    monkeypatch.setattr(sending, "_traced", False)
+    assert turn(gw_cfg, lambda b, n: Reply([text("ok")]))[0]["stop"] == "end_turn"
+    assert sending._traced is True
+
+
+def test_until_the_trace_is_seen_working_a_cancel_before_sending_counts_in_full(gw_cfg, monkeypatch):
+    """Review finding 1(b): before any request has shown the trace works, "nothing written yet" isn't believed."""
+    monkeypatch.setattr(sending, "_traced", False)
+    entered = network_wait(monkeypatch)
+    fake, nas, ledger = cancel_turn(gw_cfg, lambda b, n: Reply([text("never sent")]), entered.wait)
+    assert fake.requests == [] and statuses(ledger) == ["settled"] and nothing_open(ledger, gw_cfg)
+
+
+def test_a_trace_that_never_fires_fails_closed(gw_cfg, monkeypatch):
+    """Review finding 1, the reviewer's probe: with the trace event renamed, a Stop after Anthropic has the request
+    settles, as it would have before the client said anything."""
+    rename_the_trace(monkeypatch)
+    monkeypatch.setattr(sending, "_traced", False)
+    arrived, answer = threading.Event(), threading.Event()
+    try:
+        fake, nas, ledger = cancel_turn(gw_cfg, lambda b, n: Reply([text("late")], arrived=arrived, answer=answer),
+                                        lambda: asyncio.to_thread(arrived.wait, CEILING), release=answer.set)
+    finally:
+        answer.set()
+    assert len(fake.requests) == 1 and statuses(ledger) == ["settled"] and nothing_open(ledger, gw_cfg)
+
+
+def test_an_answered_request_counts_in_full_whatever_the_client_says(gw_cfg, monkeypatch):
+    """Review finding 1(a): once Anthropic has answered, a broken stream is billable even when the client's trace and
+    response hook both failed to report (the attempt still reads "waiting", and the trace was once seen working)."""
+    rename_the_trace(monkeypatch)
+    monkeypatch.setattr(sending, "_traced", True)
+
+    async def silent(response):
+        pass
+    monkeypatch.setattr(sending, "_on_response", silent)
+    done, fake, nas, ledger, _ = turn(gw_cfg, lambda b, n: Reply([], sse=HALF[:3], cut=True))
+    assert (done["stop"], done["cost_nd"]) == ("dropped", ledger.reserved[0]) and statuses(ledger) == ["settled"]
+
+
+def test_a_cancel_after_the_request_went_out_counts_in_full(gw_cfg):
+    """The other side of 2.1: once the request has reached Anthropic and no answer has come, a Stop may still be
+    billed, so it settles at the reservation. This also fails if the client stops saying when it starts writing."""
+    arrived, answer = threading.Event(), threading.Event()
+    try:
+        fake, nas, ledger = cancel_turn(gw_cfg, lambda b, n: Reply([text("late")], arrived=arrived, answer=answer),
+                                        lambda: asyncio.to_thread(arrived.wait, CEILING), release=answer.set)
+    finally:
+        answer.set()
+    assert len(fake.requests) == 1 and statuses(ledger) == ["settled"] and nothing_open(ledger, gw_cfg)
+    (done,) = nas.of("done")
+    assert (done["stop"], done["requests"], done["cost_nd"]) == ("cancelled", 1, ledger.reserved[0])
+
+
+def test_no_pooled_connection_in_time_releases_the_reservation(gw_cfg, monkeypatch):
+    """Argon 2.2: httpx2.PoolTimeout (no connection acquired) arrives as APITimeoutError, and nothing was sent."""
+    async def full(*args, **kwargs):
+        raise httpcore2.PoolTimeout("no connection in time")
+    monkeypatch.setattr(httpcore2._async.connection_pool.AsyncPoolRequest, "wait_for_connection", full)
+    done, fake, _, ledger, _ = turn(gw_cfg, lambda b, n: Reply([text("never sent")]))
+    assert done["stop"] == "api_error" and fake.requests == []
+    assert statuses(ledger) == ["released"] and done["cost_nd"] == 0
+
+
+@pytest.mark.parametrize("cause, status", [(httpx2.PoolTimeout("pool"), "released"),
+                                           (httpx2.ConnectTimeout("connect"), "released"),
+                                           (httpx2.ReadTimeout("read"), "settled")], ids=["pool", "connect", "read"])
+def test_a_timeout_releases_only_when_it_never_connected(gw_cfg, cause, status):
+    """The same rule from the SDK's error alone, for a client that can't say when it started writing."""
+    async def enter():
+        raise anthropic.APITimeoutError(request=httpx2.Request("POST", "https://x")) from cause
+    ledger, deps, nas = run_stub(gw_cfg, lambda **kw: Stream(enter=enter))
+    assert asyncio.run(run_turn(start_frame(), nas, deps))["stop"] == "api_error"
+    assert statuses(ledger) == [status] and nothing_open(ledger, gw_cfg)
+
+
+HALF = sse(Reply([text("Half an answer, then more of it")]))     # message_start, block start, deltas, ..., message_stop
+
+
+def sse_error(kind):
+    return f'event: error\ndata: {{"type": "error", "error": {{"type": "{kind}", "message": "fake"}}}}\n\n'
+
+
+def event(kind, data):
+    return f"event: {kind}\ndata: {json.dumps({'type': kind, **data})}\n\n"
+
+
+BAD_TOOL_INPUT = [event("content_block_start", {"index": 0, "content_block": {
+                      "type": "tool_use", "id": "toolu_01", "name": "accounts", "input": {}}}),
+                  event("content_block_delta", {"index": 0, "delta": {"type": "input_json_delta",
+                                                                      "partial_json": "]]"}}),
+                  event("content_block_stop", {"index": 0})] + HALF[-2:]
+NO_SUCH_BLOCK = [event("content_block_delta", {"index": 3, "delta": {"type": "text_delta", "text": "x"}})]
+
+
+@pytest.mark.parametrize("reply, stop", [
+    (Reply([], sse=HALF[:3], cut=True), "dropped"),
+    (Reply([], sse=HALF[:2], cut=True), "api_error"),
+    (Reply([], sse=HALF[:3]), "dropped"),
+    (Reply([], sse=HALF[:-1]), "dropped"),
+    (Reply([], sse=HALF[1:]), "dropped"),
+    (Reply([], sse=HALF[1:2] + HALF[-1:]), "api_error"),
+    (Reply([], sse=[]), "api_error"),
+    (Reply([], sse=HALF[:1] + ["event: content_block_start\ndata: {not json\n\n"]), "api_error"),
+    (Reply([], sse=HALF[:1] + [b'event: content_block_start\ndata: {"type": "\xff"}\n\n']), "api_error"),
+    (Reply([], sse=HALF[:1] + BAD_TOOL_INPUT), "api_error"),
+    (Reply([], sse=HALF[:1] + NO_SUCH_BLOCK), "api_error"),
+    (Reply([], sse=HALF[:3] + [sse_error("api_error")]), "dropped"),
+    (Reply([], sse=HALF[:2] + [sse_error("api_error")]), "api_error"),
+    (Reply([], sse=HALF[:2] + [sse_error("overloaded_error")]), "busy"),
+    (Reply([], sse=HALF[:3] + [sse_error("overloaded_error")]), "dropped"),
+    (Reply([], sse=HALF[:2] + [sse_error("rate_limit_error")]), "busy"),
+    (Reply([], sse=HALF[:-2] + HALF[-1:]), "dropped"),
+    (Reply([], sse=HALF[:1] + HALF[-1:]), "api_error"),
+], ids=["dropped-mid-answer", "dropped-before-text", "no-message-stop", "only-message-stop-missing",
+        "no-message-start", "no-message-start-no-text", "empty", "bad-json", "bad-utf8", "bad-tool-input",
+        "no-such-block", "error-event-mid-answer", "error-event-before-text", "overloaded-before-text",
+        "overloaded-mid-answer", "rate-limited-before-text", "no-message-delta", "no-message-delta-no-text"])
+def test_a_stream_that_breaks_after_the_answer_began_ends_with_a_done_and_counts_in_full(gw_cfg, reply, stop):
+    """Argon 3.1: whatever breaks the stream once Anthropic has answered 200, the turn ends with a done frame the NAS
+    can show (not a socket closed without one, which reads as the gateway gone), and the request is charged its full
+    reservation: it was sent, and no final usage came back. With some of the answer already on the NAS it ends
+    "dropped" (the answer is incomplete), with none "api_error"; a mid-stream overloaded_error is busy, like a 529,
+    until answer text has shown. A message_stop with no message_delta has no stop_reason and no final usage."""
+    done, fake, nas, ledger, _ = turn(gw_cfg, lambda b, n: reply)
+    assert (done["stop"], done["requests"], done["cost_nd"]) == (stop, 1, ledger.reserved[0])
+    assert statuses(ledger) == ["settled"] and nothing_open(ledger, gw_cfg)
+    assert nas.kinds()[-1] == "done" and "assistant" not in nas.kinds()
+
+
+@pytest.mark.parametrize("second, stop", [
+    (Reply([], sse=HALF[:2], cut=True), "dropped"),
+    (Reply([], sse=HALF[:2] + [sse_error("overloaded_error")]), "dropped"),
+    (Reply([], status=529, error_type="overloaded_error"), "dropped"),
+], ids=["cut", "overloaded-event", "overloaded-status"])
+def test_a_break_in_a_later_step_after_earlier_text_ends_dropped(gw_cfg, second, stop):
+    """The NAS shows every step's text, so once step 1 has put some answer on screen, a break in step 2 before any of
+    its own text leaves an incomplete answer: "dropped", not "api_error" or "busy"."""
+    def script(body, n):
+        if n == 1:
+            return Reply([text("Let me look at your accounts."), tool_use("toolu_01", "accounts", {})],
+                         stop_reason="tool_use")
+        return second
+    done, fake, nas, ledger, _ = turn(gw_cfg, script)
+    assert (done["stop"], done["requests"]) == (stop, 2) and len(nas.of("text")) >= 1
+    assert nothing_open(ledger, gw_cfg)
+
+
+def test_a_turn_with_no_answer_text_before_a_later_break_keeps_its_own_outcome(gw_cfg):
+    def script(body, n):
+        if n == 1:
+            return Reply([tool_use("toolu_01", "accounts", {})], stop_reason="tool_use")
+        return Reply([], sse=HALF[:2] + [sse_error("overloaded_error")])
+    done, _, nas, _, _ = turn(gw_cfg, script)
+    assert (done["stop"], done["requests"]) == ("busy", 2) and nas.of("text") == []
+
+
+@pytest.mark.parametrize("error", [
+    httpx2.ReadTimeout("read"), httpx2.ReadError("read"), httpx2.RemoteProtocolError("peer closed"),
+    anthropic.APIResponseValidationError(httpx2.Response(200, request=httpx2.Request("POST", "https://x")), None),
+    anthropic.APIError("an error with no status", httpx2.Request("POST", "https://x"), body=None),
+], ids=lambda e: type(e).__name__)
+def test_a_mid_stream_error_the_fake_server_cant_raise_ends_with_a_done(gw_cfg, error):
+    def die():
+        raise error
+    ledger, deps, nas = run_stub(gw_cfg, lambda **kw: Stream(events=[lambda: type("E", (), {"type": "ping"})(), die]))
+    done = asyncio.run(run_turn(start_frame(), nas, deps))
+    assert (done["stop"], done["requests"], done["cost_nd"]) == ("api_error", 1, ledger.reserved[0])
+    assert statuses(ledger) == ["settled"] and nothing_open(ledger, gw_cfg)
+
+
+def test_a_connection_cut_after_message_stop_keeps_the_whole_answer(gw_cfg):
+    """Review finding 4: everything up to message_stop arrived, so the answer and its usage are whole. It ends as
+    usual and is charged what it used, not the reservation."""
+    done, fake, nas, ledger, _ = turn(gw_cfg, lambda b, n: Reply([text("A whole answer.")], cut=True))
+    assert done["stop"] == "end_turn" and 0 < done["cost_nd"] < ledger.reserved[0]
+    assert statuses(ledger) == ["settled"] and nothing_open(ledger, gw_cfg)
+    (assistant,) = nas.of("assistant")
+    assert assistant["message"]["content"] == [{"type": "text", "text": "A whole answer."}]

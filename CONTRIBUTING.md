@@ -6,6 +6,7 @@ Thank you for helping. This page covers how to run Steward's code and tests, wha
 
 - Sign off every commit with `git commit -s`. That adds a `Signed-off-by:` line, which certifies that you wrote the change or have the right to submit it under the project's license (the [Developer Certificate of Origin](https://developercertificate.org/)). Steward is AGPL-3.0-or-later; see `LICENSE`.
 - AI help is welcome. Say in the pull request which parts an AI tool wrote, and review and test them as you would your own: your sign-off covers them too. Steward itself is largely written with Claude (see "How Steward is made" in the README).
+- Steward is developed in a private repository and exported to this one at each release, so a pull request here isn't merged directly. When a contribution fits, it's carried over with you named on the commit (`Co-authored-by:`) and arrives in the next release. The pull request is then closed with a note saying so.
 - Comments and tests in the code sometimes say `spec N` or `ruling N`. Those refer to design notes that are not public. New work cites public issues instead.
 - The yearly refresh of the tax tables (`src/steward/engine/data/rules/`) is best effort. If a table is out of date, an issue or a pull request with the new figures and their source is welcome.
 - If you run a changed copy for other people, point the Source code link on the About page at your own source. It is `SOURCE_URL` in `web/src/screens/you/aboutCopy.ts`. The AGPL (section 13) requires that people using a changed copy over a network can get its source.
@@ -31,6 +32,8 @@ A test waits for the thing to happen, never for time to pass, and stays determin
 - A condition with a ceiling is `tests/waiting.py`: `wait_until`, `wait_for_card`, `when_waiting`. No `time.sleep`.
 - Web tests start on `TEST_NOW` (`web/src/test-clock.ts`). Fake timers come from its `useFakeTimers()`, and `findBy`
   and `waitFor` advance them. Lazy screens are `lazyScreen()`, preloaded before a file's tests.
+- Web unit tests and e2e run in the household's time zone, America/Los_Angeles, whatever the machine's zone
+  (`web/vite.config.ts`, `web/playwright.config.ts`).
 - Timing budgets live in `tests/perf` and `web/e2e/perf`, run on purpose on a quiet machine, never in a deploy.
 - `tests/test_determinism_ratchet.py` fails on a new sleep, wall-clock budget, `{ timeout: }`, `shouldAdvanceTime`,
   `React.lazy` or `waitForTimeout`; its allowlist only shrinks.

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setCurrentBook } from '../../api/book';
 import type { AboutIn } from '../../ask/about';
 import { callsTo, reply, stubFetch } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import { AboutChip } from './AboutChip';
 import type { AboutReply } from './askApi';
 import { useAboutReply, type AboutState } from './useAboutReply';
@@ -45,8 +46,11 @@ describe('the chip (P7)', () => {
     expect(screen.getByRole('button', { name: 'Remove: About Checking ••6789' })).toHaveFocus();
   });
   it("a row that's gone says so in the chip's place", () => {
-    chip({ status: 'gone', reply: null, line: "That isn't in this book any more." });
-    expect(screen.getByRole('status')).toHaveTextContent("That isn't in this book any more.");
+    render(<LiveRegions><AboutChip state={{ status: 'gone', reply: null, line: "That isn't in this book any more." }} removed={false}
+      onRemove={vi.fn()} onAddBack={vi.fn()} today={TODAY} /></LiveRegions>);
+    // Issue #51: said through the page's polite region; the line is not a live region that appears with its words.
+    expect(screen.getByText("That isn't in this book any more.", { selector: '.ask-gone' })).not.toHaveAttribute('role');
+    expect(screen.getByTestId('live-said')).toHaveTextContent("That isn't in this book any more.");
   });
   it('nothing while there is no answer', () => {
     expect(chip({ status: 'loading', reply: null, line: null }).container).toBeEmptyDOMElement();

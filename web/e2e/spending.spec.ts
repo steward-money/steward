@@ -65,7 +65,7 @@ test.describe('a manager', () => {
       await page.getByRole('navigation', { name: 'Spending views' }).getByRole('link', { name: 'Targets' }).click();
       await page.getByRole('textbox', { name: 'Gifts target' }).fill(String(top / 100 + 100));
       await page.getByRole('button', { name: 'Save targets' }).click();
-      await expect(page.getByText('Targets saved.')).toBeVisible();
+      await expect(page.getByRole('main').getByText('Targets saved.')).toBeVisible();
       await page.goto('/spending');
       const rows = page.getByTestId('pace-row');
       await expect(rows.first()).toHaveAttribute('data-category', 'gifts');

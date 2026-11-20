@@ -3,6 +3,7 @@ server-sent events when the request streams, as JSON when it doesn't (a max_toke
 Nothing here reaches Anthropic, and the key the tests use is the dummy "test-key-not-real"."""
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 from collections.abc import Callable, Iterator
@@ -26,6 +27,14 @@ class Reply:
     error_body: object = None   # the whole error body when set (a body that isn't Anthropic's shape)
     hold: threading.Event | None = None   # the stream stops after its first text delta until this is set, so a Stop
                                           # lands while it is still going (it used to race a pause between deltas)
+    arrived: threading.Event | None = None    # set once the whole request has arrived
+    answer: threading.Event | None = None     # the reply waits for this first: a request sent and not yet answered
+    sse: list[str | bytes] | None = None  # these raw events instead of the scripted ones (a stream cut short, bad data)
+    cut: bool = False                     # after its events the stream breaks the connection mid-body
+
+
+class Cut(Exception):
+    """Raised inside a streaming body: uvicorn drops the connection without the closing chunk."""
 
 
 def text(t: str) -> dict:
@@ -42,6 +51,17 @@ def thinking(signature: str) -> dict:
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def sse(reply: Reply, msg_id: str = "msg_fake_0") -> list[str]:
+    """The raw events a scripted reply streams, to cut short or change for Reply.sse."""
+    return list(_events(reply, msg_id))
+
+
+def _body(reply: Reply, msg_id: str) -> Iterator[str]:
+    yield from reply.sse if reply.sse is not None else _events(reply, msg_id)
+    if reply.cut:
+        raise Cut()
 
 
 def _events(reply: Reply, msg_id: str) -> Iterator[str]:
@@ -93,13 +113,17 @@ class FakeAnthropic:
             self.headers.append(dict(request.headers))
             n = len(self.requests)
             reply = self.script(body, n)
+            if reply.arrived is not None:
+                reply.arrived.set()
+            if reply.answer is not None:
+                await asyncio.to_thread(reply.answer.wait, 30)
             rid = {"request-id": f"req_fake_{n}"}
             if reply.status != 200:
                 err = reply.error_body if reply.error_body is not None else {
                     "type": "error", "error": {"type": reply.error_type, "message": reply.error_message}}
                 return JSONResponse(err, status_code=reply.status, headers=rid)
-            if body.get("stream"):
-                return StreamingResponse(_events(reply, f"msg_fake_{n}"), media_type="text/event-stream", headers=rid)
+            if body.get("stream") or reply.cut:     # a cut reply breaks mid-body either way
+                return StreamingResponse(_body(reply, f"msg_fake_{n}"), media_type="text/event-stream", headers=rid)
             empty = body.get("max_tokens") == 0
             return JSONResponse({"id": f"msg_fake_{n}", "type": "message", "role": "assistant", "model": reply.model,
                                  "content": [] if empty else reply.blocks,

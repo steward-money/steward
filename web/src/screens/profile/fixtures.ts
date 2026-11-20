@@ -5,6 +5,7 @@ import type { ProfileState, SectionState } from '../../api/profile';
 import type { BookSummary } from '../../api/types';
 import { SECTION_ORDER, isFinished, type SectionKey } from '../../lib/profileSections';
 import { renderAt, type Entry } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import Profile from './Profile';
 
 export function profileState(over: Partial<Record<SectionKey, Partial<SectionState>>> = {}, me: Partial<ProfileState['me']> = {}): ProfileState {
@@ -31,12 +32,18 @@ export const FACTS = {
 export const ME = { user: { id: 1, username: 'jr', display_name: 'JR', email: 'jr@example.com' }, books: [],
   session: { id: 1, device_label: 'Laptop', created_at: '2026-10-01T00:00:00Z' } };
 
+const routes = (): ReactElement => createElement(Routes, null,
+  createElement(Route, { path: '/b/:slug/profile', element: createElement(Profile) }),
+  createElement(Route, { path: '/b/:slug/profile/:section', element: createElement(Profile) }),
+  createElement(Route, { path: '/b/:slug/profile/:section/:step', element: createElement(Profile) }),
+  createElement(Route, { path: '/b/:slug/plan', element: createElement('p', null, 'The Plan') }));
+
 /** The Profile route at `path` (under /b/ours), as routes.tsx mounts it. */
 export function atProfile(path: Entry, book: Partial<BookSummary> = {}): ReturnType<typeof renderAt> {
-  const ui: ReactElement = createElement(Routes, null,
-    createElement(Route, { path: '/b/:slug/profile', element: createElement(Profile) }),
-    createElement(Route, { path: '/b/:slug/profile/:section', element: createElement(Profile) }),
-    createElement(Route, { path: '/b/:slug/profile/:section/:step', element: createElement(Profile) }),
-    createElement(Route, { path: '/b/:slug/plan', element: createElement('p', null, 'The Plan') }));
-  return renderAt(ui, book, path);
+  return renderAt(routes(), book, path);
+}
+
+/** atProfile inside the page's live regions (RouteFrame), for a test of what is said: data-testid="live-said". */
+export function atProfileLive(path: Entry, book: Partial<BookSummary> = {}): ReturnType<typeof renderAt> {
+  return renderAt(createElement(LiveRegions, null, routes()), book, path);
 }

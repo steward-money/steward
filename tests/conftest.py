@@ -71,6 +71,31 @@ def pytest_addoption(parser):
                      help="the release gate: tests/test_claims.py also fails on any claim still pending")
 
 
+def _one_cookie_per_name(request):
+    names = [part.split("=", 1)[0].strip() for part in request.headers.get("cookie", "").split(";") if "=" in part]
+    twice = sorted({n for n in names if names.count(n) > 1})
+    if twice:
+        raise AssertionError(f"this request carries two cookies named {twice}; the server reads one of them, and "
+                             "which one is the client's choice. Clear the jar first, or set the cookie with "
+                             'domain="nas.tail1234.ts.net" so it replaces the one the server set.')
+
+
+@pytest.fixture(autouse=True)
+def one_cookie_per_name(monkeypatch):
+    """A test that puts an old session token back with cookies.set() but no domain adds a second cookie beside the one
+    the server set, and the request carries both. Which one the server reads then rests on the client's cookie order,
+    which httpx2 2.16 reversed, so a test of "the old token is refused" could pass on the new one. Every TestClient
+    fails such a request instead."""
+    from starlette.testclient import TestClient as StarletteClient
+    init = StarletteClient.__init__
+
+    def guarded(self, *args, **kwargs):
+        init(self, *args, **kwargs)
+        self.event_hooks = {**self.event_hooks, "request": [*self.event_hooks["request"], _one_cookie_per_name]}
+
+    monkeypatch.setattr(StarletteClient, "__init__", guarded)
+
+
 @pytest.fixture(autouse=True)
 def fresh_settings_cache():
     """get_settings() caches the first Settings it builds. A test that set other STEWARD_ variables must not hand

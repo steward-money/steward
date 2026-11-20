@@ -121,10 +121,29 @@ def test_engine_failure_keeps_last_saved_ages_and_logs_once(frozen, signed_in, d
         assert r.status_code == 503
         assert r.json() == {"error": "The plan couldn't be worked out right now.",
                             "last_saved": {"comfortable_age": saved["comfortable_age"], "likely_age": saved["likely_age"],
-                                           "saved_at": saved["saved_at"]}}
+                                           "saved_at": saved["saved_at"], "saved_day": "2026-10-13"}}
     assert db.scalars(select(EventLog.message).where(EventLog.kind == "system")).all() == \
         ["The retirement plan couldn't be worked out: RuntimeError."]
     assert signed_in.get("/api/b/ours/plan").status_code == 200        # the saved levers' result is still in the cache
+
+
+def test_home_plan_and_taxes_name_the_same_saved_day_near_midnight(frozen, signed_in, db):
+    """#52: a plan saved at 23:30 household time is already the next day in UTC, and on a device east of the household.
+    Home, Plan (its answer and its history) and Taxes all send the household's day, so no screen turns the saved
+    instant into a day itself."""
+    ready(db)
+    late = datetime(2026, 10, 12, 6, 30, tzinfo=timezone.utc)             # 23:30 on Oct 11 in California
+    db.add(Plan(saved_at=late, saved_by=1, engine_version="2026.10.2", levers='{"assumed": {}, "try": {}, "pinned": []}',
+                comfortable_age=64, likely_age=61))
+    db.commit()
+    plan = signed_in.get("/api/b/ours/plan").json()
+    assert (plan["plan"]["saved_day"], plan["previous"]["saved_day"]) == ("2026-10-11", "2026-10-11")
+    assert signed_in.get("/api/b/ours/plan/history").json()["history"][0]["saved_day"] == "2026-10-11"
+    home = signed_in.get("/api/b/ours/home").json()
+    assert home["signs"]["plan"]["saved_day"] == "2026-10-11"
+    # The book has a late bill, so the headline opens with it and the saved plan is its one good clause.
+    assert [c["saved_day"] for c in home["verdict"]["clauses"] if c["kind"] == "plan"] == ["2026-10-11"], home["verdict"]
+    assert "saved Oct 11)" in signed_in.get("/api/b/ours/taxes/roth").json()["later_line"]
 
 
 def test_an_engine_refusal_names_person_1_by_label_in_the_log(frozen, client, db):

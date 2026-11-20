@@ -127,6 +127,38 @@ def test_release_signs_each_image_keyless_with_an_sbom_and_provenance():
     assert "cuda" not in text and "rocm" not in text                               # Steward never publishes vendor software
 
 
+def test_no_image_is_built_for_a_version_without_release_notes():
+    jobs = load("release.yml")["jobs"]
+    assert list(jobs) == ["notes", "image", "release"]
+    notes = jobs["notes"]
+    assert notes["permissions"] == {"contents": "read"}
+    assert "needs" not in notes
+    assert [s["run"] for s in notes["steps"] if "run" in s] == ['python3 scripts/release_notes.py check "$TAG"']
+    assert notes["steps"][-1]["env"] == {"TAG": "${{ github.ref_name }}"}
+    assert jobs["image"]["needs"] == "notes"
+
+
+def test_the_release_job_publishes_the_notes_and_digests_with_contents_write_only():
+    jobs = load("release.yml")["jobs"]
+    job = jobs["release"]
+    assert job["needs"] == "image"
+    assert job["permissions"] == {"contents": "write"}
+    by_name = {s.get("name"): s for s in job["steps"]}
+    write = by_name["Write the notes with the image digests"]
+    matrix = [row["image"] for row in jobs["image"]["strategy"]["matrix"]["include"]]
+    assert write["env"]["IMAGES"].split() == matrix                   # every image the release pushes
+    assert "docker buildx imagetools inspect \"$ref\" --format '{{json .Manifest}}'" in write["run"]
+    assert 'python3 scripts/release_notes.py body "$TAG"' in write["run"]
+    assert "set -euo pipefail" in write["run"]
+    publish = by_name["Publish the GitHub Release"]
+    assert publish["env"]["GH_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"    # by env, never in the script
+    run = publish["run"]
+    create = next(line.strip() for line in run.splitlines() if "gh release create" in line)
+    assert create == 'gh release create "$TAG" --title "$title" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag'
+    assert 'title="Steward ${TAG#v}"' in run
+    assert 'gh release edit "$TAG" --title "$title" --notes-file "$RUNNER_TEMP/notes.md"' in run   # a re-run updates
+
+
 PLACEHOLDER = "ORG-" + "PLACEHOLDER"    # the org's stand-in before the repo had a name; split so this file passes
 SKIP = {"node_modules", "dist", "__pycache__", "test-results", "playwright-report"}
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from steward_boundary import vocab as V
 from steward_boundary.aliases import BRACKETS
 from steward_boundary.schema import ALIAS, DATE, INT, MONTH, arr, enum, nullable, obj
+from steward_boundary.store_rows import TICKS
 from steward_boundary.tools import ERRORS
 from steward_boundary.validate import validate
 
@@ -38,9 +39,12 @@ START = obj({"type": enum(("start",)), "protocol": INT, "turn_id": TURN_ID, "boo
              "fingerprints": FINGERPRINTS, "issued": arr(ISSUED_TOKEN, 2000)})
 RECORDED = obj({"type": enum(("recorded",)), "seq": INT})
 RECORD_FAILED = obj({"type": enum(("record_failed",)), "seq": INT})
+# `ticked`: the rows and payees a manager ticked on an approved merchant_detail card, read by the gateway beside the
+# content and never sent on (steward_boundary.store_rows, public issue #53).
 TOOL_RESULT = obj({"id": {"type": "string", "pattern": r"^[A-Za-z0-9_-]{1,100}$"},
                    "name": {"type": "string", "maxLength": 40},
-                   "content": nullable({"type": "object"}), "error": nullable(enum(ERRORS))})
+                   "content": nullable({"type": "object"}), "error": nullable(enum(ERRORS)), "ticked": TICKS},
+                  optional=("ticked",))
 TOOL_RESULTS = obj({"type": enum(("tool_results",)), "seq": INT, "results": arr(TOOL_RESULT, 64)})
 CANCEL_REASONS = ("not_a_member", "chat_off", "approval_timeout", "stopped")
 CANCEL = obj({"type": enum(("cancel",)), "reason": enum(CANCEL_REASONS)})

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { GATEWAY, loginAs, restoreVault, waitForGateway } from './fixtures';
+import { GATEWAY, loginAs, restoreVault, shown, waitForGateway } from './fixtures';
 
 test.describe.serial('Get Steward ready', () => {
   test.beforeAll(async () => { await restoreVault(); });
@@ -16,9 +16,9 @@ test.describe.serial('Get Steward ready', () => {
     await page.getByLabel('Password').fill(['e2e', 'mail', 'pass'].join('-'));
     await page.getByLabel('From').fill('steward@example.com');
     await page.getByRole('button', { name: 'Save' }).first().click();
-    await expect(page.getByText('Saved.')).toBeVisible();
+    await expect(shown(page, 'Saved.')).toBeVisible();
     await page.getByRole('button', { name: 'Send a test', exact: true }).click();
-    await expect(page.getByText(/^Sent to .+\. Check your inbox\.$/)).toBeVisible();
+    await expect(shown(page, /^Sent to .+\. Check your inbox\.$/)).toBeVisible();
     await expect(page.getByTestId('ready-row').filter({ hasText: 'Email' })).toHaveClass(/is-done/);
   });
 

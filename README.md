@@ -63,7 +63,7 @@ For the rest, read the [threat model](docs/explanations/threat-model.md), [Priva
 
 ## Scope
 
-Steward 0.1.1 is early. It is for US households of one or two adults, on x86_64 Linux with Docker (Podman isn't supported yet). Transactions come from SimpleFIN or files. The gateway is optional.
+Steward 0.1.2 is early. It is for US households of one or two adults, on x86_64 Linux with Docker (Podman isn't supported yet). Transactions come from SimpleFIN or files. The gateway is optional.
 
 ## How Steward is made
 

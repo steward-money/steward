@@ -6,12 +6,13 @@ import json
 import logging
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from steward import clock
 from steward.books.people import household_labels, names_of, people_of
 from steward.db.engine import begin_write
 from steward.db.models import EventLog, Plan
@@ -166,8 +167,14 @@ def save_plan(db: Session, user_id: int, state: LeverState, res: SolveResult, no
     return p
 
 
+def saved_on(at: datetime) -> date:
+    """The household's day a plan was saved (#52). Home, Plan and Taxes all name a save by this day, so near midnight
+    a device in another zone can't make one screen say Oct 12 and another Oct 13."""
+    return at.astimezone(clock.household_tz()).date()
+
+
 def plan_out(db: Session, p: Plan, current: bool) -> dict:
-    return {"id": p.id, "saved_at": p.saved_at.isoformat(), "saved_by": {"id": p.saved_by, "name": names_of(people_of(db), mid=True).get(p.saved_by)},
+    return {"id": p.id, "saved_at": p.saved_at.isoformat(), "saved_day": saved_on(p.saved_at).isoformat(), "saved_by": {"id": p.saved_by, "name": names_of(people_of(db), mid=True).get(p.saved_by)},
             "engine_version": p.engine_version, "comfortable_age": p.comfortable_age, "likely_age": p.likely_age,
             "levers": json.loads(p.levers), "current": current,
             "inputs_summary": json.loads(p.inputs_summary) if p.inputs_summary else None}
@@ -187,7 +194,8 @@ def record_failure(db: Session, exc: BaseException) -> dict:
     last = latest_plan(db)
     return {"error": NOT_WORKED_OUT,
             "last_saved": None if last is None else {"comfortable_age": last.comfortable_age, "likely_age": last.likely_age,
-                                                     "saved_at": last.saved_at.isoformat()}}
+                                                     "saved_at": last.saved_at.isoformat(),
+                                                     "saved_day": saved_on(last.saved_at).isoformat()}}
 
 
 def checklist_out(items: Sequence[ChecklistItem], names: dict[str, str]) -> list[dict]:

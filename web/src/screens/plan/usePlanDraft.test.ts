@@ -110,7 +110,7 @@ describe('usePlanDraft: kept moves stay with their book and person (plan subpage
 
   it('clearKeptDraft() forgets the kept moves and the saved note', () => {
     keepDraft(draftKey(1, 7), moved);
-    setSavedNote({ planId: 7, at: '2026-10-28T12:00:00Z', by: 'JR', previous: null });
+    setSavedNote({ planId: 7, at: '2026-10-28T12:00:00Z', day: '2026-10-28', by: 'JR', previous: null });
     clearKeptDraft();
     expect(keptDraft(draftKey(1, 7))).toBe(EMPTY_DRAFT);
     expect(getSavedNote(7)).toBeNull();

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFakeTimers } from '../../test-clock';
 import { LONG_PRESS_MS } from '../../lib/selection';
 import { callsTo, inList, reply, stubFetch, wrapBook } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import { ACCTS } from '../accounts/fixtures';
 import Review from '../Review';
 import Transactions from '../Transactions';
@@ -48,6 +49,18 @@ describe('Bulk sort on Transactions', () => {
     expect(screen.getByTestId('bulk-bar')).toHaveTextContent('2 selected');
     // A pick never opens the row.
     expect(screen.queryByRole('complementary', { name: 'Transaction detail' })).toBeNull();
+  });
+
+  // Review of #51: the count appears with the bar, so it is said through the page's region, not as a live region of its own.
+  it('the count is said when the bar appears and when it changes', async () => {
+    stubFetch(routes());
+    wrapBook(<LiveRegions><Transactions /></LiveRegions>, {}, '/b/ours/transactions?dates=all');
+    fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
+    const count = within(await screen.findByTestId('bulk-bar')).getByText('0 selected').parentElement as HTMLElement;
+    expect(count).not.toHaveAttribute('aria-live');
+    expect(screen.getByTestId('live-said')).toHaveTextContent('0 selected');
+    pickRow(1);
+    expect(screen.getByTestId('live-said')).toHaveTextContent('1 selected');
   });
 
   it('sorts the picked rows in one request, says so with Undo, and Undo puts them back', async () => {

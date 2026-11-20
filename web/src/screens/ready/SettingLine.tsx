@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { gw } from '../../lib/gatewayName';
 import { Button } from '../../ui/Button';
 import { CopyButton } from '../../ui/CopyButton';
+import { Shown } from '../../ui/Live';
 import type { BootLine } from './api';
 import { ADD_GATEWAY_LINE, ADD_LINE, CHECK_AGAIN, COPY, COPY_SELECTED, NOT_YET, NOT_YET_UNSET, RESTART, TOOK_EFFECT } from './copy';
 
@@ -41,7 +42,7 @@ export function SettingLine({ line, done, checked, onCheck, checking }: {
       {!gateway && <CopyCode text={RESTART} />}
       <div className="ready__check">
         <Button variant="quiet" busy={checking} onClick={onCheck}>{CHECK_AGAIN}</Button>
-        {result && <p role="status">{result}</p>}
+        {result && <Shown>{result}</Shown>}
       </div>
     </div>
   );

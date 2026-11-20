@@ -22,7 +22,7 @@ def test_0009_adds_the_tables_and_keeps_existing_rows(settings):
     assert NEW <= names
     with eng.connect() as c:
         assert c.execute(text("SELECT name FROM account")).scalar() == "Checking"
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
     cols = {c["name"] for c in inspect(eng).get_columns("inventory_item")}
     assert {"full_number", "last4", "check_reason", "data_source", "account_id", "details", "login_kept_in",
             "closed_on", "closed_reason", "created_by", "updated_by"} <= cols

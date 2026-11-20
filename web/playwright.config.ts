@@ -4,6 +4,12 @@ import { DEMO_PORT, EMPTY_PORT } from './e2e/ports';
 // Read in Node; the web tsconfig has no Node types.
 declare const process: { pid: number; env: Record<string, string | undefined> };
 
+// The household's time zone, the one e2e/server.sh gives the server (STEWARD_TIMEZONE). The browser runs in it
+// (timezoneId below), and so do the specs: a spec that counts days with new Date() gets the server's day on any machine.
+// Workers start after the config loads, so they inherit it.
+const HOUSEHOLD_ZONE = 'America/Los_Angeles';
+process.env.TZ = HOUSEHOLD_ZONE;
+
 const server = (port: number, vault: 'demo' | 'empty') => ({
   command: 'bash e2e/server.sh',
   // The runner's pid: e2e/server.sh stops itself when this run is gone, even after a SIGKILL that skips Playwright's
@@ -27,7 +33,7 @@ export default defineConfig({
   retries: 0,
   timeout: 30_000,
   reporter: [['list']],
-  use: { baseURL: `http://localhost:${DEMO_PORT}`, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  use: { baseURL: `http://localhost:${DEMO_PORT}`, timezoneId: HOUSEHOLD_ZONE, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   // The demo household, and one empty household per project for Set up Steward (onboarding ruling 15). Not 8431:
   // on the dev machine the gateway's MCP endpoint listens there. STEWARD_E2E_BASE_PORT moves them all (e2e/ports.ts).
   webServer: [server(DEMO_PORT, 'demo'), server(EMPTY_PORT.phone, 'empty'), server(EMPTY_PORT.desktop, 'empty')],

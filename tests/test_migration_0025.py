@@ -25,7 +25,7 @@ def test_0025_adds_the_tables_and_columns_and_downgrade_drops_them(settings):
     before_cols = {c["name"] for c in inspect(eng).get_columns("transaction")}
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
     i = inspect(eng)
     assert set(i.get_table_names()) == before | NEW | {"expense_ratio_override", "positions_mapping", "positions_import", "undo_text", "home_visit", "import_set", "import_layout", "import_hint", "statement_stage", "statement_layout"}
     cols = {c["name"]: c for c in i.get_columns("transaction")}

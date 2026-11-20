@@ -26,6 +26,7 @@
            "CASH ADVANCE"],
   "lead": ["DEBIT CARD PURCHASE", "RECURRING PAYMENT", "POS PURCHASE", "DEBIT CARD", "CHECK CARD", "CHECKCARD",
            "PURCHASE", "POS", "SQ", "TST"],
+  "authorized": ["PURCHASE", "PURCHASE INTL", "PURCHASE WITH CASH BACK", "RECURRING PAYMENT", "MONEY TRANSFER"],
   "drop": ["GIFT CARD", "GIFTCARD", "GIFT CRD", "PREPAID CARD"],
   "states": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS",
              "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC",

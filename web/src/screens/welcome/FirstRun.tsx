@@ -12,6 +12,7 @@ import { momentAllowed } from '../../lib/momentAllowed';
 import { Acorn } from '../../ui/Acorn';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
+import { Shown } from '../../ui/Live';
 import { Notice } from '../../ui/Notice';
 import { StepBar } from '../../ui/StepBar';
 import { useAcornMotion } from '../../ui/useMoment';
@@ -195,7 +196,7 @@ function Money({ state, go }: Go & { state: WelcomeState }) {
         {allowed.face && <Acorn ref={ref} face={money.in ? 'win' : 'resting'} size={48} className="welcome__acorn" />}
         <h1 id="welcome-money-h" className="welcome__title">{C.MONEY_TITLE}</h1>
       </div>
-      <div role="status" className="welcome__said">{line && <p data-testid="step-line">{line}</p>}</div>
+      <Shown as="div" className="welcome__said">{line && <p data-testid="step-line">{line}</p>}</Shown>
       <div className="welcome__cards">
         <Card className="welcome__card">
           <h2 className="subhead">{C.LINK_TITLE}</h2>

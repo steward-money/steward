@@ -147,14 +147,14 @@ describe('words', () => {
   });
   it('says when a plan was saved', () => {
     const at = new Date(2026, 9, 14, 21, 14).toISOString();
-    expect(savedWhen(at, new Date(2026, 9, 14, 22, 0))).toBe('today at 9:14 pm');
-    expect(savedWhen(new Date(2026, 9, 12, 9, 0).toISOString(), new Date(2026, 9, 14, 22, 0))).toBe('on Oct 12');
+    expect(savedWhen(at, '2026-10-14', new Date(2026, 9, 14, 22, 0))).toBe('today at 9:14 pm');
+    expect(savedWhen(new Date(2026, 9, 12, 9, 0).toISOString(), '2026-10-12', new Date(2026, 9, 14, 22, 0))).toBe('on Oct 12');
   });
   it("says today or the day, and the time, on the household's clock (#26)", () => {
     setHouseholdZone('Pacific/Kiritimati');                        // UTC+14: noon UTC on Nov 16 is 2 AM on Nov 17
     const now = new Date('2026-11-16T12:00:00Z');
-    expect(savedWhen('2026-11-16T11:00:00Z', now)).toBe('today at 1:00 am');
+    expect(savedWhen('2026-11-16T11:00:00Z', '2026-11-17', now)).toBe('today at 1:00 am');
     // 11 PM on Nov 16 at home, though the same calendar day as now on most devices.
-    expect(savedWhen('2026-11-16T09:00:00Z', now)).toBe('on Nov 16');
+    expect(savedWhen('2026-11-16T09:00:00Z', '2026-11-16', now)).toBe('on Nov 16');
   });
 });

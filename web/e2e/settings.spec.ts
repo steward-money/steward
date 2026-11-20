@@ -52,7 +52,7 @@ test("Profile's Home and cars card saves the same fact the flow reads, with Save
   const saved = page.waitForResponse((r) => r.url().endsWith('/api/b/ours/facts') && r.request().method() === 'POST');
   await page.getByLabel('What it would sell for today').press('Enter');
   await saved;
-  await expect(page.getByRole('status').filter({ hasText: 'Saved · Undo' })).toBeVisible();
+  await expect(page.getByRole('main').getByText('Saved · Undo')).toBeVisible();
   const facts = (await (await page.request.get('/api/b/ours/facts')).json()).facts;
   expect(facts['home.value_cents'].value).toBe(`${value}00`);
 });

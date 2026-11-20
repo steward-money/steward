@@ -54,7 +54,7 @@ def test_0030_maps_the_steps_keeps_every_kid_whole_and_links_the_home(settings):
     before = _utcnow()
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert [tuple(r) for r in c.execute(text(
             "SELECT id, label, birth_year, cost_level, account_id, monthly_contribution_cents, share_pct, covers_living, "
             "removed_at FROM child ORDER BY id"))] == [

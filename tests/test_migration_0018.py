@@ -22,7 +22,7 @@ def test_0018_adds_the_dismissed_error_column(settings):
     run_migrations(eng)
     assert {c["name"] for c in inspect(eng).get_columns("institution")} == before | {"dismissed_error", "org_id"}
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert c.execute(text("SELECT name, dismissed_error FROM institution")).all() == [("Marcus", None)]
     command.downgrade(_config(eng), "0017")
     assert "dismissed_error" not in {c["name"] for c in inspect(eng).get_columns("institution")}

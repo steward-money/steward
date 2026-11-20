@@ -7,6 +7,7 @@ import { LockKeyhole, Pencil, Send } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useDebouncedRequest } from '../../lib/useDebouncedRequest';
 import { Button } from '../../ui/Button';
+import { Shown } from '../../ui/Live';
 import { fill, isModelChip, preview, type Chip, type Preview } from './askApi';
 import { ChipText, Legend } from './Chip';
 import * as C from './copy';
@@ -91,14 +92,14 @@ export function Composer({ value, onChange, onSend, disabled, placeholder, note,
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }} />
         {tip && tour && <TourTip id={tipId} chips={chips > 0} example={tour.example} onDone={tour.onDone} />}
         {shown && (
-          <div className={`willsend${tip ? ' is-tour' : ''}`} aria-live="polite">
+          <Shown as="div" className={`willsend${tip ? ' is-tour' : ''}`}>
             {tour
               ? <button type="button" className="willsend__label willsend__replay" aria-expanded={tour.show} onClick={tour.onToggle}>{label}</button>
               : <span className="willsend__label">{label}</span>}
             {about && <span className="willsend__about"><ChipText text={about.sent} chips={about.chips} labels={about.labels} /></span>}
             {typedPreview && (failed ? <span className="willsend__text">{fill(C.PREVIEW_FAILED, { error: failed })}</span>
               : current?.data ? <WillSend p={current.data} /> : <span className="willsend__text muted">…</span>)}
-          </div>
+          </Shown>
         )}
         <div className="composer__row">
           <span className="small muted">{note ?? (chips ? C.TAP_NOTE : quiet ? '' : C.COMPOSER_NOTE)}</span>

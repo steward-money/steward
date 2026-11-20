@@ -49,10 +49,10 @@ describe('Signs (Home spec, Vital signs)', () => {
     const a = show(HOME.signs);
     expect(tile('Plan: Comfortably at 54 · saved Oct 12')).toHaveAttribute('href', '/b/ours/plan');
     a.unmount();
-    const b = show(signs({ plan: { age: null, still: false, saved_at: SAVED } }));
+    const b = show(signs({ plan: { age: null, still: false, saved_day: SAVED } }));
     expect(tile('Plan: Not by 70 · saved Oct 12')).toBeInTheDocument();
     b.unmount();
-    const c = show(signs({ plan: { age: 61, still: false, saved_at: '2025-12-30T12:00:00+00:00' } }));
+    const c = show(signs({ plan: { age: 61, still: false, saved_day: '2025-12-30' } }));
     expect(tile('Plan: Comfortably at 61 · saved Dec 30, 2025')).toBeInTheDocument();
     c.unmount();
     show(signs({ plan: null }));
@@ -64,11 +64,11 @@ describe('Signs (Home spec, Vital signs)', () => {
     // Pago Pago (UTC-11) is west of nearly every device: the device's midnight on Jan 1 is still Dec 31 there, which
     // made this January's save show its year and last December's leave it out.
     setHouseholdZone('Pacific/Pago_Pago');
-    const jan = (saved_at: string) => wrapBook(<Signs signs={signs({ plan: { age: 54, still: false, saved_at } })} month="2027-01" businessFailed={false} />);
-    const a = jan('2027-01-10T20:00:00+00:00');   // Jan 10, 9 AM at home
+    const jan = (saved_day: string) => wrapBook(<Signs signs={signs({ plan: { age: 54, still: false, saved_day } })} month="2027-01" businessFailed={false} />);
+    const a = jan('2027-01-10');
     expect(tile('Plan: Comfortably at 54 · saved Jan 10')).toBeInTheDocument();
     a.unmount();
-    jan('2026-12-20T20:00:00+00:00');
+    jan('2026-12-20');
     expect(tile('Plan: Comfortably at 54 · saved Dec 20, 2026')).toBeInTheDocument();
   });
 

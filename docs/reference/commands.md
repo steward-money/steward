@@ -52,7 +52,7 @@ Runs the web app on the configured host and port.
 
 `steward reset-password USERNAME` sets a new password for that person, removes their passkeys and signs them out everywhere, which also ends their Claude Code grants. It says how many passkeys went. Without `--password`, it asks for one.
 
-Use it when someone is locked out. Five wrong passwords from one device lock password sign-in for that account on that device for 15 minutes. 50 in a row from devices that haven't signed in to the account before lock it on every such device for 15 minutes, while a device that has signed in before can still try. A passkey still works during that time. [S5](../CLAIMS.md#s5) If a lockout is the only problem, waiting it out is enough. If the password is lost, run:
+Use it when someone is locked out. Five wrong passwords at a username or email from one device lock password sign-in at that name on that device for 15 minutes. 50 in a row from devices that haven't signed in to the account before lock it on every such device for 15 minutes, while a device that has signed in before can still try. A passkey still works during that time. [S5](../CLAIMS.md#s5) If a lockout is the only problem, waiting it out is enough. If the password is lost, run:
 
 ```
 docker compose exec steward steward reset-password USERNAME

@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { callsTo, reply, stubFetch, wrap } from '../../test-utils';
+import { today } from '../../lib/today';
 import { CHILDREN, FACTS, impactsFixture, nextDollarFixture, planFixture } from './fixtures';
 import type { PlanReady } from './api';
 import { TryChanges } from './TryChanges';
@@ -123,7 +124,7 @@ describe('Try changes: saving and errors', () => {
     const data = planFixture();
     const fetchMock = routes({
       'POST /api/plan': (_u: string, init: RequestInit) => reply({
-        plan: { ...data.plan!, id: 8, saved_at: new Date().toISOString(), saved_by: { id: 1, name: 'JR' } },
+        plan: { ...data.plan!, id: 8, saved_at: new Date().toISOString(), saved_day: today(), saved_by: { id: 1, name: 'JR' } },
         levers: { ...data.levers, assumed: { ...data.levers.assumed, ...JSON.parse(init.body as string).assumed } },
         result: { ...data.result, comfortable_age: 62 },
       }, 201),
@@ -141,7 +142,7 @@ describe('Try changes: saving and errors', () => {
     let finish!: () => void;
     const fetchMock = routes({
       'POST /api/plan': (_u: string, init: RequestInit) => new Promise<Response>((resolve) => { finish = () => resolve(reply({
-        plan: { ...data.plan!, id: 8, saved_at: new Date().toISOString(), saved_by: { id: 1, name: 'JR' } },
+        plan: { ...data.plan!, id: 8, saved_at: new Date().toISOString(), saved_day: today(), saved_by: { id: 1, name: 'JR' } },
         levers: { ...data.levers, assumed: { ...data.levers.assumed, ...JSON.parse(init.body as string).assumed } },
         result: { ...data.result, comfortable_age: 62 },
       }, 201)); }),
@@ -180,7 +181,7 @@ describe('Try changes: saving and errors', () => {
     routes({ 'POST /api/plan/preview': () => (++n === 1
       ? reply({ levers: data.levers, result: { ...data.result, comfortable_age: 61, likely_age: 58 } })
       : reply({ error: "The plan couldn't be worked out right now.",
-        last_saved: { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00' } }, 503)) });
+        last_saved: { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00', saved_day: '2026-10-12' } }, 503)) });
     wrap(<TryChanges data={planFixture()} />, '/plan/try');
     await openSaveMore();
     fireEvent.change(screen.getByTestId('slider-save_more'), { target: { value: '25000' } });
@@ -195,7 +196,7 @@ describe('Try changes: saving and errors', () => {
 
   it('a 503 while dragging keeps the last saved ages with their date', async () => {
     routes({ 'POST /api/plan/preview': () => reply({ error: "The plan couldn't be worked out right now.",
-      last_saved: { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00' } }, 503) });
+      last_saved: { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00', saved_day: '2026-10-12' } }, 503) });
     wrap(<TryChanges data={planFixture()} />, '/plan/try');
     await openSaveMore();
     fireEvent.change(screen.getByTestId('slider-save_more'), { target: { value: '50000' } });
@@ -244,7 +245,7 @@ describe('Try changes: new plan inputs', () => {
 });
 
 describe('Try changes: the saved-plan note belongs to one plan', () => {
-  const note = (planId: number) => ({ planId, at: new Date().toISOString(), by: 'JR', previous: null });
+  const note = (planId: number) => ({ planId, at: new Date().toISOString(), day: today(), by: 'JR', previous: null });
 
   it('shows the note for the plan on screen', async () => {
     routes();

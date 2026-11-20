@@ -18,7 +18,7 @@ def test_0016_adds_the_rate_column(settings):
     run_migrations(eng)
     assert {c["name"] for c in inspect(eng).get_columns("account")} == before | {"rate_bp", "advisory_fee_bp", "loan_id", "sends_holdings", "sends_transactions", "holdings_seen_at", "transactions_seen_at"}
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert c.execute(text("SELECT name, rate_bp FROM account")).all() == [("Card", None)]
     command.downgrade(_config(eng), "0015")
     assert "rate_bp" not in {c["name"] for c in inspect(eng).get_columns("account")}

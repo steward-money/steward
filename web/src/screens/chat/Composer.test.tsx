@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFakeTimers } from '../../test-clock';
 import { setCurrentBook } from '../../api/book';
 import { reply, stubFetch, wrapBook } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import { chipWhy, Composer } from './Composer';
 
 beforeEach(() => useFakeTimers());
@@ -40,6 +41,16 @@ describe('Composer', () => {
     expect(screen.getByText("Removed by the gateway's check")).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Person 2/ }));
     expect(screen.getByText('Replaced in Steward. Alex is in this book, so Claude gets "Person 2". Answers show "Alex" again.')).toBeInTheDocument();
+  });
+
+  // Review of #51: the preview appears with its words, so it is said through the page's region, not as a live region.
+  it('says what Claude will see through the page region when the preview appears', async () => {
+    stubFetch({ 'POST /api/chat/preview': { text: 'Can we cover a year on one income?', as_written: true, chips: [], labels: {} } });
+    wrapBook(<LiveRegions><Host onSend={vi.fn()} /></LiveRegions>);
+    await type('Can we cover a year on one income?');
+    const line = await screen.findByText('Claude will see your question as written.', { selector: '.willsend *' });
+    expect(line.closest('.willsend')).not.toHaveAttribute('aria-live');
+    expect(screen.getByTestId('live-said')).toHaveTextContent('Claude will see your question as written.');
   });
 
   it('says the question goes as written when nothing was replaced', async () => {

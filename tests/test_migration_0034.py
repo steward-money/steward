@@ -25,7 +25,7 @@ def test_0034_adds_a_null_about_and_keeps_every_turn(settings):
     eng = _at_0033(settings)
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert c.execute(text("SELECT turn_id, asked, about FROM chat_turn")).all() == [
             ("t_00000000000000a1", "Are we spending more on dining?", None)]
     eng.dispose()

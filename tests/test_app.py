@@ -8,7 +8,7 @@ from steward.events import log_event
 
 def test_health(client):
     r = client.get("/api/health")
-    assert r.status_code == 200 and r.json() == {"ok": True, "version": "0.1.1"}
+    assert r.status_code == 200 and r.json() == {"ok": True, "version": "0.1.2"}
 
 
 def test_log_event(db):

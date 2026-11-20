@@ -57,7 +57,8 @@ def run(cfg, app) -> None:
 @contextmanager
 def serve_in_thread(app, *, sockets: list[socket.socket] | None = None) -> Iterator[str]:
     """A real uvicorn server on a free loopback port (or on the given sockets), in a daemon thread. Yields the first
-    socket's address."""
+    socket's address. On a clean exit it returns only once the server has stopped, which uvicorn does after every
+    connection's handler has returned, so a test can read what the handlers left behind without polling for it."""
     import uvicorn
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")
     server = uvicorn.Server(config)
@@ -74,3 +75,5 @@ def serve_in_thread(app, *, sockets: list[socket.socket] | None = None) -> Itera
     finally:
         server.should_exit = True
         thread.join(10)
+    if thread.is_alive():
+        raise RuntimeError("The server didn't stop.")

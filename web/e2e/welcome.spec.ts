@@ -45,7 +45,7 @@ test('the first run from Welcome through an import, sorting and an extra to Plan
   await expect(page.getByText('Imported 16 into 3 accounts')).toBeVisible();
   await page.getByRole('link', { name: 'Back to setup' }).click();
   await expect(page.getByRole('heading', { name: 'Bring in your money', level: 1 })).toBeVisible();
-  await expect(page.getByText(/^16 rows in\./)).toBeVisible();
+  await expect(page.getByRole('main').getByText(/^16 rows in\./)).toBeVisible();
 
   // Leaving and coming back resumes on the next step.
   await page.goto('/b/ours/transactions');
@@ -80,7 +80,7 @@ test('the first run from Welcome through an import, sorting and an extra to Plan
   await page.getByLabel('Email', { exact: true }).fill('partner-welcome@example.com');
   await page.getByLabel('Name', { exact: true }).fill('Partner Welcome');
   await page.getByRole('button', { name: 'Invite', exact: true }).click();
-  await expect(page.getByText('Invite sent to partner-welcome@example.com.')).toBeVisible();
+  await expect(page.getByRole('main').getByText('Invite sent to partner-welcome@example.com.')).toBeVisible();
   await expect(page.getByTestId('extras-row').filter({ hasText: 'Your partner' }).getByText('Done', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Finish' }).click();

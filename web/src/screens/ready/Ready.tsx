@@ -10,6 +10,7 @@ import { isSection, sectionPath } from '../../lib/profileSections';
 import { useWide } from '../../lib/useWide';
 import { Button } from '../../ui/Button';
 import { ChecklistRow } from '../../ui/ChecklistRow';
+import { Shown } from '../../ui/Live';
 import { Notice } from '../../ui/Notice';
 import { Sheet } from '../../ui/Sheet';
 import { Skeleton } from '../../ui/Skeleton';
@@ -97,10 +98,10 @@ export default function Ready() {
     <div className="stack ready">
       <h2>{S_READY}</h2>
       {cheer && need === 0 ? (
-        <p className="lede ready__cheer" role="status">
+        <Shown className="lede ready__cheer">
           {allowed.face && <Acorn ref={acornRef} face="win" size={28} />}
           {allowed.line ? nextLine('ready') : NOTHING_NEEDS}
-        </p>
+        </Shown>
       ) : <p className="lede">{need === 0 ? NOTHING_NEEDS : NEED(need)}</p>}
       <div className="card setup">
         {rows.map((row) => {

@@ -1,4 +1,4 @@
-import { dateLabelFromIso } from '../../lib/format';
+import { dateLabel } from '../../lib/format';
 import { Notice } from '../../ui/Notice';
 import { Sheet } from '../../ui/Sheet';
 import { Skeleton } from '../../ui/Skeleton';
@@ -14,7 +14,7 @@ export function HistorySheet({ open, onClose }: { open: boolean; onClose: () => 
         <ul className="history">
           {h.data.history.map((p) => (
             <li key={p.id} className="history__row">
-              <span className="strong">{dateLabelFromIso(p.saved_at, new Date())}{p.saved_by.name ? ` · ${p.saved_by.name}` : ''}</span>
+              <span className="strong">{dateLabel(p.saved_day, new Date())}{p.saved_by.name ? ` · ${p.saved_by.name}` : ''}</span>
               <span className="small muted">{agesLine(p.comfortable_age, p.likely_age)}</span>
               {p.current && <span className="tag">{CURRENT_TAG}</span>}
             </li>

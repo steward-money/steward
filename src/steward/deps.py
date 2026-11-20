@@ -52,15 +52,11 @@ def directory_write_db(request: Request) -> Iterator[Session]:
 
 
 def current_session(request: Request, db: Session = Depends(directory_db)):
-    token, name = cookies.read_session(request)
+    token, _ = cookies.read_session(request)
     t = now()
     found = sessions.resolve(db, token, t) if token else None
     if found is None:
         raise HTTPException(401, detail={"error": "Please sign in."})
-    if name != cookies.session_name(request.app.state.settings.base_url):
-        # Issue #14: a 0.1.0 cookie still signs in for this release, and this answer moves it to the __Host- name,
-        # whatever answer the route gives (cookies.MoveSession).
-        cookies.move_session(request, token, max(0, int((found[1].expires_at - t).total_seconds())))
     # End the transaction resolve left open, so nothing is held while a handler waits for its request body
     # (json_object). Expired attributes reload later, inside the handler.
     db.commit()

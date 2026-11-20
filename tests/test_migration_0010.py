@@ -27,7 +27,7 @@ def test_0010_adds_the_tables_and_marks_old_transactions_checked(settings):
     run_migrations(eng)
     assert NEW <= set(inspect(eng).get_table_names())
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         rows = dict(c.execute(text('SELECT id, watched_at FROM "transaction"')).all())
     assert rows[1] is not None and rows[2] is None
     cols = {c["name"] for c in inspect(eng).get_columns("flag")}

@@ -18,7 +18,7 @@ export type Clause =
   | { kind: 'spending_close' }
   | { kind: 'spending_on_track' }
   | { kind: 'bills_paid' }
-  | { kind: 'plan'; age: number; still: boolean; saved_at: string };
+  | { kind: 'plan'; age: number; still: boolean; saved_day: string };
 export type Opener = 'steady' | 'mostly' | 'new_month' | 'problem' | 'empty';
 /** The bank-fed day-to-day accounts 3 days old or more (#15): how many, their oldest and newest age in days, and the
  *  name when there is one alone. */
@@ -29,8 +29,9 @@ export type FlexRow = { category: string; spent_cents: number; target_cents: num
 export type SignsData = {
   flexible: { spent_cents: number; target_cents: number | null; rows: FlexRow[] };
   bills: { paid: number; of: number; late: { category: string; usual_day: number }[] };
-  /** The newest saved plan, never today's solve (#17: that would cost Home its budget), so it is shown with its date. */
-  plan: { age: number | null; still: boolean; saved_at: string } | null;
+  /** The newest saved plan, never today's solve (#17: that would cost Home its budget), so it is shown with its date:
+   *  the household's day it was saved, YYYY-MM-DD, as the server reads it (#52). */
+  plan: { age: number | null; still: boolean; saved_day: string } | null;
   net_worth: { total_cents: number; change_cents: number | null };
   has_business: boolean;
 };

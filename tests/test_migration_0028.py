@@ -34,7 +34,7 @@ def test_0028_adds_the_investment_columns_and_tables_and_downgrade_drops_them(se
     run_migrations(eng)
     i = inspect(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert c.execute(text("SELECT advisory_fee_bp, loan_id, sends_holdings, sends_transactions FROM account "
                               "WHERE id = 1")).one() == (None, None, None, None)
         assert c.execute(text("SELECT import_id, market_value_cents FROM holding WHERE id = 1")).one() == (None, 50000)

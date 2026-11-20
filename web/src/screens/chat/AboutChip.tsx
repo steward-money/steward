@@ -3,6 +3,7 @@
 // that's gone says so in the chip's place (P28).
 import { X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { Shown } from '../../ui/Live';
 import { aboutThing } from './aboutChip';
 import { fill } from './askApi';
 import * as C from './copy';
@@ -19,7 +20,7 @@ export function AboutChip({ state, removed, onRemove, onAddBack, today = new Dat
     const a = document.activeElement;
     if (!a || a === document.body) ctl.current?.focus();
   }, [removed]);
-  if (state.status === 'gone') return <p className="ask-gone" role="status">{state.line}</p>;
+  if (state.status === 'gone') return <Shown className="ask-gone">{state.line}</Shown>;
   if (!state.reply) return null;
   const { thing, alias } = aboutThing(state.reply.about, state.reply.labels, today);
   if (removed) {

@@ -14,7 +14,7 @@ def dockerfile() -> str:
 def test_app_bases_are_pinned_by_digest():
     froms = re.findall(r"^FROM (\S+) AS (\w+)$", dockerfile(), re.M)
     assert [(re.sub(DIGEST + "$", "", ref), stage) for ref, stage in froms] == [
-        ("node:22-alpine", "web"), ("python:3.12-slim", "base")]
+        ("node:26-alpine", "web"), ("python:3.12-slim", "base")]
     assert all(re.search(DIGEST + "$", ref) for ref, _ in froms)
 
 
@@ -92,3 +92,11 @@ def test_the_uv_cache_check_catches_a_command_without_no_cache():
 
 def test_playwright_mcp_output_is_never_tracked():
     assert ".playwright-mcp/" in (ROOT / ".gitignore").read_text().splitlines()
+
+
+def test_ci_builds_the_web_app_on_the_same_node_major_as_the_image():
+    """The Dockerfile's web stage and CI's setup-node are two pins of one thing; a bump to one must move the other."""
+    image = re.search(r"^FROM node:(\d+)-alpine", (ROOT / "Dockerfile").read_text(), re.M)
+    ci = re.findall(r'node-version:\s*"?(\d+)', (ROOT / ".github/workflows/ci.yml").read_text())
+    assert image and ci, "the Dockerfile's node stage or CI's setup-node moved"
+    assert set(ci) == {image.group(1)}, f"CI uses Node {sorted(set(ci))}, the image Node {image.group(1)}"

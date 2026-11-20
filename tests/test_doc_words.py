@@ -40,14 +40,17 @@ def test_no_public_doc_uses_the_banned_word_for_the_reader():
 # your data, not every byte of a request (PRIV-10); and what you type into Claude Code goes around Steward (PRIV-12).
 # The 16d re-check found two more forms of the same claims: "approved ... for this question" on the card's button, the
 # approval line and What Claude saw (PRIV-9), and "names ... account numbers ... stay" said other ways (PRIV-2, TRI-2),
-# which ABSOLUTE_SHAPES catches whatever words sit between. Each says more than its CLAIMS row. Keep the list short and
-# explicit; the release gate's pillar reviews check the rest.
+# which ABSOLUTE_SHAPES catches whatever words sit between. Public issue #53's review found the approval card's
+# "every row, exactly as it would go" and turn.py's "byte for byte what would be sent": the gateway may still replace a
+# person's name in an unticked row. Each says more than its CLAIMS row. Keep the list short and explicit; the release
+# gate's pillar reviews check the rest.
 ABSOLUTES_FOUND_FALSE = (
     "anything that identifies", "trusts nothing", "checks every word", "nobody can change",
     "never receives names", "never sends names", "never names", "names of people", "notes, people's names",
     "names and account numbers stay", "claude never saw the names", "replaced exactly", "see exactly what was sent",
     "for one question", "this one question", "for this question", "same checks as a question",
     "same checks as chat", "names aren't sent", "those are never sent",
+    "exactly as it would go", "byte for byte what would be sent",
 )
 # "Names, notes and account numbers stay here", "the names and account numbers Steward holds stay here": names held
 # back with account numbers, as if no name ever goes. Within one sentence, so "account numbers stay" alone is allowed.

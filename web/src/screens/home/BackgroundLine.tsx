@@ -3,6 +3,7 @@ import type { Background } from '../../api/types';
 import { backgroundLine } from '../../lib/background';
 import { useGatewayBack } from '../../lib/gateway';
 import { LazyOopsAcorn } from '../../ui/LazyOopsAcorn';
+import { Shown } from '../../ui/Live';
 import { GatewayBack } from './lazyMoments';
 
 /** The model's background pass, as Home's For you and Review show it (lib/background.ts), with the gateway's character
@@ -12,9 +13,9 @@ export function BackgroundLine({ bg, className, testId }: { bg: Background; clas
   const text = backgroundLine(bg);
   if (!text) return null;
   return (
-    <p className={`${className} bg-line`} data-testid={testId} role="status">
+    <Shown className={`${className} bg-line`} data-testid={testId}>
       {bg.waiting && <LazyOopsAcorn />}
       {back && !bg.waiting ? <Suspense fallback={text}><GatewayBack /></Suspense> : text}
-    </p>
+    </Shown>
   );
 }

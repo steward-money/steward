@@ -1,16 +1,18 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import Integer, String, cast, or_, select, update
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from steward.auth.passwords import hash_password, verify_password
-from steward.db.directory_models import User
+from steward.db.directory_models import DirectoryMeta, User
 
 LOCK_AFTER = 5             # wrong passwords from one device for one account, inside LOCK_MINUTES (auth/devices.py)
 LOCK_MINUTES = 15
 ACCOUNT_LOCK_AFTER = 50    # wrong passwords in a row for one account from devices it doesn't know: the backstop (#7)
 MIN_PASSWORD_LEN = 12
 _DUMMY_HASH = hash_password("dummy-password-not-used")
+MISSES = "sign_in_misses"   # directory_meta: the row miss() changes
 
 
 class UserExists(ValueError):
@@ -67,9 +69,28 @@ def check_login(db: Session, username_or_email: str, password: str, now: datetim
     u = find_user(db, username_or_email)
     if u is None:
         verify_password(_DUMMY_HASH, password)  # keeps timing close to a known user
+        miss(db)
         raise BadCredentials()
-    _check_password(db, u, password, now, backstop)
+    try:
+        _check_password(db, u, password, now, backstop)
+    except Locked:
+        verify_password(_DUMMY_HASH, password)  # before the write, inside the write lock, as a wrong password hashes
+        miss(db)
+        raise
     return u
+
+
+def miss(db: Session) -> None:
+    """Issue #50: the database work of a wrong password at a real name, for a name nobody has and an account its own
+    lock holds. A wrong password hashes, counts and commits, which writes a page, so these hash first (the caller)
+    and then change one row of directory_meta and commit: the same hash, reads and writes in the same order, inside
+    the same write lock, and a guess can't tell by the commit's write or by how long the lock is held whether a name
+    exists. The row must change: SQLite writes nothing for an UPDATE that leaves a row as it was."""
+    db.execute(insert(DirectoryMeta).values(key=MISSES, value="1").on_conflict_do_update(
+        index_elements=[DirectoryMeta.key],
+        set_={"value": cast(cast(DirectoryMeta.value, Integer) + 1, String)}))
+    db.scalar(select(DirectoryMeta.value).where(DirectoryMeta.key == MISSES))   # as the count's refresh reads
+    db.commit()
 
 
 def check_password(db: Session, user: User, password: str, now: datetime, backstop: bool = True) -> None:

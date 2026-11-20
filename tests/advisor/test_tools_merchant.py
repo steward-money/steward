@@ -351,6 +351,14 @@ MASKED = [
     # more payment words with "to" or "from", and a number before the name (R6, Argon)
     ("EFT DEBIT TO PRIYA NAIR", None, "Transfer"), ("WITHDRAWAL TO PRIYA NAIR", None, "Transfer"),
     ("ACH PMT TO #4829 PRIYA NAIR", "Priya Nair", "Transfer"),
+    # Wells Fargo's card lines, read from after "AUTHORIZED ON <date>" (public issue #49)
+    ("MONEY TRANSFER AUTHORIZED ON 03/15 PRIYA NAIR S382074123456789 CARD 1234", None, "Transfer"),
+    ("PURCHASE AUTHORIZED ON 03/15 SQC*PRIYA NAIR 8774174551 CA S382074123456789 CARD 1234", None, "Cash App"),
+    ("PURCHASE AUTHORIZED ON 03/15 CASH APP*PRIYA NAIR 8774174551 CA S382074123456789 CARD 1234", None, "Cash App"),
+    ("MONEY TRANSFER AUTHORIZED ON 03/15 APPLE CASH SENT MONEY 877-233-8552 CA S382074123456789 CARD 1234",
+     "Priya Shah", "Apple Cash"),
+    ("RECURRING PAYMENT AUTHORIZED ON 03/01 VENMO PRIYA NAIR VISA DIRECT NY S462061234567890 CARD 1234", None,
+     "Venmo"),
 ]
 # Money in goes as "<title> from [name]" (review round 4, R3).
 MASKED_IN = [
@@ -390,7 +398,12 @@ KEPT = ["VERIZON WIRELESS 800-922-0204", "WIRELESS ZONE", "WIREGRASS ELECTRIC", 
         "COSTCO WHSE #1234 BREA CA", "COSTCO WHSE #1234 CREDIT TO CARD", "TARGET T-1234 BREA CA",
         "TARGET T-1234 CR FROM RETURN", "ATM WITHDRAWAL FROM SAVINGS", "STATEMENT CREDIT FROM AMEX OFFER",
         "CR GOODS TO GO", "CHK CARD PURCHASE FARM TO TABLE", "CHECKCARD PURCHASE FARM TO TABLE", "WIRED COFFEE",
-        "THE WIRED CAFE"]
+        "THE WIRED CAFE",
+        # Wells Fargo's card lines (public issue #49)
+        "PURCHASE AUTHORIZED ON 03/15 STARBUCKS STORE 05812 SEATTLE WA S382074123456789 CARD 1234",
+        "RECURRING PAYMENT AUTHORIZED ON 03/01 NETFLIX.COM NETFLIX.COM CA S462061234567890 CARD 1234",
+        "PURCHASE RETURN AUTHORIZED ON 03/16 TARGET T-1234 BREA CA S303075012345678 CARD 1234",
+        "PURCHASE AUTHORIZED ON 03/14 SHELL OIL 57444212400 HOUSTON TX P000000381234567 CARD 1234"]
 
 
 def _by_alias(books, ours, engine, household, lines, sign=-1):
@@ -505,6 +518,28 @@ def test_the_tables_hold_every_line_review_round_4_named():
                             "ATM WITHDRAWAL FROM SAVINGS", "STATEMENT CREDIT FROM AMEX OFFER", "CR GOODS TO GO",
                             "CHK CARD PURCHASE FARM TO TABLE", "WIRED COFFEE", "THE WIRED CAFE") if n not in KEPT]
     assert {"FEDWIRE CREDIT PRIYA NAIR", "WIRED FUNDS PRIYA NAIR", "WITHDRAWAL TO PRIYA NAIR"} <= masked
+
+
+def test_a_card_store_at_a_bank_that_writes_authorized_on_is_read_on_its_own_lines(books, ours, engine, household):
+    """Public issue #49: every card line that starts "PURCHASE AUTHORIZED ON" had the payee key "AUTHORIZED ON", so one
+    Apple Cash line at that bank made a store asked for by alias go as "Apple Cash to [name]", and its rows as
+    "Authorized On". Each store is now its own payee, and the Apple Cash line still goes as a name."""
+    from steward.watch.payees import payee
+    store = "PURCHASE AUTHORIZED ON 03/15 STARBUCKS STORE 05812 SEATTLE WA S382074123456789 CARD 1234"
+    sent = "RECURRING PAYMENT AUTHORIZED ON 03/16 APPLE CASH SENT MONEY 877-233-8552 CA S462061234567890 CARD 1234"
+    a = checking(engine)
+    add_rows(engine, [(a, date(2026, 10, 16), -2500, sent, None, "gifts"),
+                      (a, date(2026, 10, 15), -650, store, None, "gifts")])
+    assert payee(store).key != payee(sent).key
+    with Session(engine) as db:
+        db.add(AdvisorAlias(kind="payee", target=payee(store).key, alias="Payee 86"))
+        db.commit()
+    r = ask(books, ours, household, engine, payees=["Payee 86"])
+    assert r["content"]["payees"] == [{"payee": "Payee 86", "name": "Starbucks Store"}]
+    assert [x["merchant"] for x in r["content"]["rows"]] == ["Starbucks Store"]
+    assert r["home"] == {}
+    r = ask(books, ours, household, engine, category="gifts", start="2026-10-15", end="2026-10-16")
+    assert [x["merchant"] for x in r["content"]["rows"]] == ["Apple Cash to [name]", "Starbucks Store"]
 
 
 # --- Review round 4: Argon's merchant findings, each reproduced first -----------------------------------------------

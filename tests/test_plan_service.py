@@ -71,7 +71,14 @@ def test_saves_keep_every_row_and_the_newest_wins(db):
     assert out["saved_by"] == {"id": u.id, "name": "JR"} and out["current"] is True
     assert out["levers"]["assumed"]["spending_pct"] == 90 and out["saved_at"] == T.isoformat()
     assert out["comfortable_age"] == res.comfortable_age and out["engine_version"] == "2026.10.5"
+    assert out["saved_day"] == "2026-10-13"
     assert svc.saved_state(b).assumed.spending_pct == 90 and svc.saved_state(None) is None
+
+
+def test_a_save_is_named_by_the_households_day():
+    """#52: 23:30 in California is the next day in UTC; Home, Plan and Taxes all say the household's day."""
+    assert svc.saved_on(datetime(2026, 10, 12, 6, 30, tzinfo=timezone.utc)).isoformat() == "2026-10-11"
+    assert svc.saved_on(datetime(2026, 10, 12, 7, 0, tzinfo=timezone.utc)).isoformat() == "2026-10-12"
 
 
 def test_failures_log_once_and_return_the_last_saved_ages(db):
@@ -81,7 +88,8 @@ def test_failures_log_once_and_return_the_last_saved_ages(db):
     svc.save_plan(db, u.id, LeverState(Levers(), Levers()), res, T)
     db.commit()
     body = svc.record_failure(db, InputError("The younger spouse is already 95 or older; there is nothing left to plan to."))
-    assert body["last_saved"] == {"comfortable_age": res.comfortable_age, "likely_age": res.likely_age, "saved_at": T.isoformat()}
+    assert body["last_saved"] == {"comfortable_age": res.comfortable_age, "likely_age": res.likely_age, "saved_at": T.isoformat(),
+                                  "saved_day": "2026-10-13"}
     assert db.scalars(select(EventLog.message).where(EventLog.kind == "system")).all() == \
         ["The retirement plan couldn't be worked out: RuntimeError."]
 

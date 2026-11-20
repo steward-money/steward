@@ -19,4 +19,4 @@ def test_nan_is_refused():
 
 
 def test_protocol_version():
-    assert PROTOCOL == 2
+    assert PROTOCOL == 3      # 3: a tool result's `ticked` (public issue #53)

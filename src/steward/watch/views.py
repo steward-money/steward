@@ -21,7 +21,7 @@ from steward.inventory.views import item_row, load
 from steward.watch import vocab as V
 from steward.watch.checks import day
 from steward.watch.due import expectations, payments
-from steward.watch.flags import expected_sheet, range_text
+from steward.watch.flags import expected_sheet, flag_payee, range_text
 from steward.watch.payees import payee, scam_kind
 from steward.watch.store import LAST_RUN, also_of, facts_of, get_state, large_cents
 
@@ -312,16 +312,20 @@ def flag_detail(db: Session, directory: Engine, f: Flag, today: date, owners: di
     related, related_line = _related(db, f, owners, today)
     done = f.status in V.DONE
     large = large_cents(db)
+    # The payee as the transaction gives it now, for the parts that name who was paid or look up their other payments;
+    # the summary and title keep the payee they were written with, and scrub() needs that one (flag_payee).
+    p = flag_payee(db, f, facts)
+    now = {**facts, "payee_key": p.key, "payee": p.name, "method": p.method} if facts.get("payee_key") else facts
     return {
         **flag_row(f, name, names, today),
         "why": V.why(f.check, facts.get("large_cents") or large), "fact": _fact(f, facts),
         "also": [{"check": a["check"], "label": V.check_label(a["check"], name), "icon": V.CHECK_ICONS[a["check"]],
                   "detail": a["detail"]} for a in also_of(f)],
         "flagged_at": f.created_at.isoformat(), "status_at": f.status_at.isoformat() if f.status_at else None,
-        "transaction": _transaction(db, f, facts, owners), "others": _others(db, f, facts, accounts),
-        "earlier": _earlier(db, f, facts, accounts), "payments": _payments(db, f, accounts),
+        "transaction": _transaction(db, f, now, owners), "others": _others(db, f, now, accounts),
+        "earlier": _earlier(db, f, now, accounts), "payments": _payments(db, f, accounts),
         "related": related, "related_line": related_line,
-        "expected": None if done else expected_sheet(f, large), "expected_note": EXPECTED_NOTE.get(f.check),
+        "expected": None if done else expected_sheet(f, large, p), "expected_note": EXPECTED_NOTE.get(f.check),
         "known": _known(db, f), "history": history(db, directory, f, today, owners),
         "can_edit": can_edit, "viewer_line": None if can_edit else VIEWER_LINE,
     }

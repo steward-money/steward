@@ -63,7 +63,7 @@ def test_cookies_passkeys_and_every_ours_row_survive_the_move(settings):
                                  for at, status, step, uid in rows_before["setup_step"]]
     assert rows_after == {**rows_before, **{t: [] for t in new_tables}}
     with after.connect() as c2:
-        assert c2.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c2.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
     after.dispose()
 
 
@@ -99,7 +99,7 @@ def test_a_crash_after_the_rename_finishes_on_the_next_start(settings, monkeypat
         assert c.get("/api/auth/me").status_code == 200
     eng = make_engine(settings.db_path, key)
     with eng.connect() as c2:
-        assert c2.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c2.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
     eng.dispose()
 
 
@@ -178,7 +178,7 @@ def test_a_missing_directory_with_a_book_already_past_0008_refuses_to_start(sett
 def test_book_revision_reads_a_books_alembic_head_and_none_for_a_bare_file(books, engine, tmp_path):
     from sqlalchemy import create_engine
     from steward.db.migrate import book_revision
-    assert book_revision(engine) == "0037"
+    assert book_revision(engine) == "0038"
     bare = create_engine(f"sqlite:///{tmp_path / 'bare.db'}")
     assert book_revision(bare) is None
     bare.dispose()

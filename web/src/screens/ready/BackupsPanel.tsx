@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { SAVE, SAVED } from '../../lib/copy';
 import { Button } from '../../ui/Button';
 import { Field, FormError } from '../../ui/Field';
+import { Shown } from '../../ui/Live';
 import { useSheetSaved } from '../../ui/Sheet';
 import { saveBackups, type InstallSettings, type ReadyRow } from './api';
 import { COPIES_GO, OFF, PING_URL, REMOVE, REMOVE_PING, SET_IN_FILE, TIME } from './copy';
@@ -64,7 +65,7 @@ export function BackupsPanel({ s }: { s: InstallSettings['backups']; row: ReadyR
       {error && <FormError>{error}</FormError>}
       <div className="ready__check">
         {Object.keys(change).length > 0 && <Button type="submit" busy={busy}>{SAVE}</Button>}
-        {saved && <span role="status">{SAVED}</span>}
+        {saved && <Shown as="span">{SAVED}</Shown>}
       </div>
       <p className="small muted">{COPIES_GO.replace('{dir}', s.dir)}</p>
     </form>

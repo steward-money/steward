@@ -5,6 +5,7 @@ import { withCelebrate } from '../../lib/celebrations';
 import { CANCEL, MERGE_INTO, UNDONE } from '../../lib/copy';
 import { money } from '../../lib/format';
 import { Button } from '../../ui/Button';
+import { Shown } from '../../ui/Live';
 import { Notice } from '../../ui/Notice';
 import { Sheet } from '../../ui/Sheet';
 import { mergeInto, previewMerge, refresh, undoIt, type MergeReply } from './api';
@@ -61,7 +62,7 @@ export default function MergeInto({ account, others, onClose, onMerged }: MergeI
         </fieldset>
         {into !== null && (preview.isPending ? <p className="muted">{C.COUNTING}</p>
           : preview.isError ? <Notice tone="error">{preview.error.message}</Notice>
-            : <p role="status">{previewLine(preview.data.merged)}</p>)}
+            : <Shown data-testid="merge-preview">{previewLine(preview.data.merged)}</Shown>)}
         {error && <Notice tone="error">{error}</Notice>}
         <div className="same-merge__acts">
           <Button disabled={!chosen || !preview.isSuccess} busy={busy} onClick={() => { void confirm(); }}>

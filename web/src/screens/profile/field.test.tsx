@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { callsTo, reply, stubFetch } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import { FieldCtx, ProfileField } from './field';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -9,9 +10,11 @@ afterEach(() => vi.unstubAllGlobals());
 function card(canEdit = true, save = vi.fn(async () => 'tok')) {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <FieldCtx.Provider value={{ mode: 'card', register: () => () => {}, canEdit }}>
-        <ProfileField label="State" input="text" text="CA" shown="California" check={(t) => (t ? null : 'Choose a state.')} save={save} />
-      </FieldCtx.Provider>
+      <LiveRegions>
+        <FieldCtx.Provider value={{ mode: 'card', register: () => () => {}, canEdit }}>
+          <ProfileField label="State" input="text" text="CA" shown="California" check={(t) => (t ? null : 'Choose a state.')} save={save} />
+        </FieldCtx.Provider>
+      </LiveRegions>
     </QueryClientProvider>,
   );
   return save;
@@ -27,7 +30,10 @@ describe('a card field', () => {
     await waitFor(() => expect(input).toHaveFocus());
     fireEvent.change(input, { target: { value: 'OR' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(await screen.findByRole('status')).toHaveTextContent('Saved · Undo');
+    expect(await screen.findByText('Saved', { selector: '.prof-saved', exact: false })).toHaveTextContent('Saved · Undo');
+    // Issue #51: said through the page's polite region; the line is not a live region of its own.
+    expect(screen.getByTestId('live-said')).toHaveTextContent('Saved · Undo');
+    expect(screen.queryByRole('status')).toBeNull();
     expect(save).toHaveBeenCalledWith('OR');
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(callsTo(fetchMock, 'POST', '/api/undo/tok')).toHaveLength(1));

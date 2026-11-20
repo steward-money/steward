@@ -26,7 +26,7 @@ def test_0033_adds_an_empty_home_visit_and_leaves_the_rest(settings):
     eng = _at_0032(settings)
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert c.execute(text("SELECT count(*) FROM home_visit")).scalar() == 0
         assert c.execute(text("SELECT user_id, seen_at FROM user_setup")).all() == [(1, AT)]
         assert c.execute(text("SELECT count(*) FROM event_log")).scalar() == 1

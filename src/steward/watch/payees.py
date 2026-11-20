@@ -1,7 +1,9 @@
 """Who a payment went to (watching decision 2). Card purchases: Transactions' own merchant name when it has one (the
 categorizer's rules and corrections), else the bank text cleaned by services.transactions.tidy and then of store
-numbers, cities and gift-card words. Zelle, wires, checks and bill pay: the recipient after "TO", normalised for case
-and spacing. The word lists are in data/watch.json (tests/test_watch_payees.py)."""
+numbers, cities and gift-card words. A line that starts "PURCHASE AUTHORIZED ON 03/15" (Wells Fargo's card lines, and
+its "PURCHASE INTL", "PURCHASE WITH CASH BACK $ 20.00" and RETURN forms) is read from after the date, without the
+"S<digits>" reference and "CARD 1234" at its end (public issue #49). Zelle, wires, checks and bill pay: the recipient
+after "TO", normalised for case and spacing. The word lists are in data/watch.json (tests/test_watch_payees.py)."""
 from __future__ import annotations
 
 import json
@@ -33,6 +35,9 @@ class Words:
     end: re.Pattern                # what may follow the name: "ON", "CONF", "#", a word with a digit, the end
     cash: re.Pattern
     lead: tuple[str, ...]
+    authorized: re.Pattern         # "PURCHASE AUTHORIZED ON 03/15 ": a lead-in and its date, matched at the start only.
+    #                                "PURCHASE WITH CASH BACK $ 20.00 RETURN AUTHORIZED ON": a cash-back amount and a
+    #                                RETURN may come between the lead-in and AUTHORIZED ON
     drop: re.Pattern
     states: frozenset[str]
     apps: frozenset[str]
@@ -54,12 +59,15 @@ def words() -> Words:
     raw = json.loads(DATA.read_text())
     to = raw["recipient"]
     apps = frozenset(raw["payment_apps"])
+    authorized = raw["authorized"]
     return Words(
         scam=tuple((s["kind"], s["word"], s["title"], _alts(s["words"])) for s in raw["scam"]),
         methods=tuple((m["method"], re.compile(m["pattern"])) for m in raw["methods"]),
         to=re.compile(to["to"]), name=re.compile(to["name"]), end=re.compile(to["end"]),
         cash=_alts(raw["cash"]),
         lead=tuple(sorted(raw["lead"], key=len, reverse=True)), drop=_alts(raw["drop"]),
+        authorized=re.compile(rf"(?:{_either(authorized)})(?: \$ ?\d+(?:\.\d{{2}})?)?(?: RETURN)? AUTHORIZED ON"
+                              rf"(?: \d{{1,2}}/\d{{1,2}}(?:/\d{{2,4}})?)?(?= |$)"),
         states=frozenset(raw["states"]), apps=apps,
         app=re.compile(rf"(?<![A-Z0-9])({_either(a.upper() for a in apps)})\s*\*\s*(?P<name>[^\s*]+)"),
         title_words=frozenset(raw["title_words"]),
@@ -89,9 +97,28 @@ def display(text: str) -> str:
     return " ".join(out)
 
 
+_REF = re.compile(r"[SP]\d+")         # the reference code before "CARD 1234" on a Wells Fargo card line
+
+
+def _after_authorized(s: str) -> str:
+    """"STARBUCKS STORE 05812 SEATTLE WA S382074123456789 CARD" (tidy() has taken the "1234"): the store and its place,
+    without the trailing "CARD", a card's last 4 and the reference codes. Word by word from the end, like tidy()."""
+    toks = s.split()
+    if len(toks) >= 2 and toks[-2] == "CARD" and re.fullmatch(r"\d{4}", toks[-1]):
+        toks = toks[:-1]
+    if toks and toks[-1] == "CARD":
+        toks.pop()
+    while toks and _REF.fullmatch(toks[-1]):
+        toks.pop()
+    return " ".join(toks)
+
+
 def _clean_card(s: str) -> str:
     W = words()
-    s = W.drop.sub(" ", tidy(s)).replace("/", " ")
+    s = tidy(s)
+    if (m := W.authorized.match(s)) is not None:
+        s = _after_authorized(s[m.end():])     # every card line at that bank would otherwise be "AUTHORIZED ON"
+    s = W.drop.sub(" ", s).replace("/", " ")
     s = re.sub(r"\s+", " ", s).strip()
     for lead in W.lead:
         if s.startswith(lead + " "):

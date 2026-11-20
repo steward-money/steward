@@ -4,7 +4,7 @@ import {
   H_BEHIND, H_BEHIND_LITTLE, H_BILL_MORE, H_BILLS_PAID, H_EMPTY, H_LATE_BILL, H_LATE_BILLS, H_MORE_OUT, H_MOSTLY, H_NEW_MONTH,
   H_OTHERWISE, H_OVER_MANY, H_OVER_ONE, H_OVERDRAWN, H_PLAN, H_PLAN_STILL, H_SPENDING_CLOSE, H_SPENDING_ON_TRACK, H_STALE_N, H_STALE_ONE, H_STALE_RANGE, H_STEADY,
 } from './copy';
-import { dateLabelFromIso, dollars } from './format';
+import { dateLabel, dollars } from './format';
 
 const fill = (s: string, vars: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k]));
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -43,7 +43,7 @@ function clause(c: Clause, today: Date): string {
     case 'spending_close': return H_SPENDING_CLOSE;
     case 'spending_on_track': return H_SPENDING_ON_TRACK;
     case 'bills_paid': return H_BILLS_PAID;
-    case 'plan': return fill(c.still ? H_PLAN_STILL : H_PLAN, { age: c.age, date: dateLabelFromIso(c.saved_at, today) });
+    case 'plan': return fill(c.still ? H_PLAN_STILL : H_PLAN, { age: c.age, date: dateLabel(c.saved_day, today) });
   }
 }
 

@@ -5,6 +5,7 @@ import { useRemoval } from '../../lib/useRemoval';
 import { Button } from '../../ui/Button';
 import { ConfirmSheet } from '../../ui/ConfirmSheet';
 import { Field, FormError } from '../../ui/Field';
+import { Shown } from '../../ui/Live';
 import { RemovalLine } from '../../ui/RemovalLine';
 import { useSheetSaved } from '../../ui/Sheet';
 import { removeEmail, saveEmail, sendTest, type InstallSettings } from './api';
@@ -95,10 +96,10 @@ export function EmailPanel({ s }: { s: InstallSettings['email'] }) {
         {!env && <Button type="submit" busy={busy === 'save'}>{SAVE}</Button>}
         <Button variant="quiet" busy={busy === 'test'} onClick={() => void test()}>{SEND_TEST}</Button>
         {s.source === 'app' && <Button variant="quiet" aria-label={REMOVE_EMAIL_LABEL} onClick={() => setRemoving(true)}>{REMOVE}</Button>}
-        {saved && <span role="status">{SAVED}</span>}
+        {saved && <Shown as="span">{SAVED}</Shown>}
       </div>
       <RemovalLine removal={removal} holdsFocus />
-      {tested && <p className={tested.ok ? undefined : 'field__error'} role="status">{tested.text}</p>}
+      {tested && <Shown className={tested.ok ? undefined : 'field__error'}>{tested.text}</Shown>}
       <ConfirmSheet open={removing} title={REMOVE_EMAIL} body={REMOVE_EMAIL_BODY} action={REMOVE} variant="danger" busy={busy === 'remove'}
         onConfirm={() => void remove()} onClose={() => setRemoving(false)} returnTo={removal.returnTo} />
     </form>

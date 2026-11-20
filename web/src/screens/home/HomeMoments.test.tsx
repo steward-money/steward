@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { callsTo, stubFetch, wrapBook } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import { HomeTree, newGrowthLine, ProfileGrowth, progressLine } from './HomeMoments';
 
 const fx = vi.hoisted(() => ({ acorn: vi.fn(() => () => {}), winMoment: vi.fn(() => () => {}) }));
@@ -14,8 +15,10 @@ const growth = (stage: number, met: boolean[], seen: boolean) => ({ stage, seen,
 describe('the growth tree (phase 17 spec 3.4)', () => {
   it('a new stage hops once on Home, says which milestone, and marks it seen', async () => {
     const fetchMock = stubFetch({ '/api/growth': growth(3, [true, false, true, true, false], false), 'POST /api/growth/seen': () => new Response(null, { status: 204 }) });
-    wrapBook(<HomeTree asOf={DAY} />);
-    expect(await screen.findByRole('status')).toHaveTextContent('New growth: a year of history.');
+    wrapBook(<LiveRegions><HomeTree asOf={DAY} /></LiveRegions>);
+    // Issue #51: the line is said through the page's polite region; it is not a live region of its own.
+    expect(await screen.findByText('New growth: a year of history.', { selector: '.home-tree__line' })).not.toHaveAttribute('role');
+    expect(screen.getByTestId('live-said')).toHaveTextContent('New growth: a year of history.');
     expect(document.querySelector('svg.oak')).toHaveAttribute('data-stage', '3');
     await waitFor(() => expect(callsTo(fetchMock, 'POST', '/api/growth/seen').map((c) => c.body)).toEqual([{ stage: 3 }]));
     await waitFor(() => expect(fx.acorn).toHaveBeenCalledWith(expect.objectContaining({ motion: 'hop' })));
@@ -23,9 +26,10 @@ describe('the growth tree (phase 17 spec 3.4)', () => {
 
   it('a stage already seen sits still and says nothing', async () => {
     const fetchMock = stubFetch({ '/api/growth': growth(3, [true, false, true, true, false], true) });
-    wrapBook(<HomeTree asOf={DAY} />);
+    wrapBook(<LiveRegions><HomeTree asOf={DAY} /></LiveRegions>);
     await screen.findByTestId('home-tree');
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.home-tree__line')).toBeNull();
+    expect(screen.getByTestId('live-said')).toBeEmptyDOMElement();
     expect(callsTo(fetchMock, 'POST', '/api/growth/seen')).toEqual([]);
     expect(fx.acorn).not.toHaveBeenCalled();
   });
@@ -40,7 +44,7 @@ describe('the growth tree (phase 17 spec 3.4)', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener: () => {}, removeEventListener: () => {} }));
     stubFetch({ '/api/growth': growth(1, [false, false, false, true, false], false), 'POST /api/growth/seen': () => new Response(null, { status: 204 }) });
     wrapBook(<HomeTree asOf={DAY} />);
-    expect(await screen.findByRole('status')).toHaveTextContent('New growth: a year of history.');
+    expect(await screen.findByText('New growth: a year of history.')).toBeInTheDocument();
     expect(document.querySelector('svg.oak')).not.toBeNull();
     expect(fx.acorn).not.toHaveBeenCalled();
   });
@@ -90,6 +94,6 @@ describe('the growth tree (phase 17 spec 3.4)', () => {
       milestones: KEYS.map((key, i) => (i === 0 ? { key, met: true, month: '2026-11' } : { key, met: false })) };
     stubFetch({ '/api/growth': g, 'POST /api/growth/seen': () => new Response(null, { status: 204 }) });
     wrapBook(<HomeTree asOf="2026-12-31" />);
-    expect(await screen.findByRole('status')).toHaveTextContent('New growth: November fully sorted.');
+    expect(await screen.findByText('New growth: November fully sorted.')).toBeInTheDocument();
   });
 });

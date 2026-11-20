@@ -33,7 +33,7 @@ def test_0031_turns_saved_giving_and_childcare_into_commitments_and_keeps_kids(s
     eng = _at_0030(settings)
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         got = {r[0]: tuple(r[1:]) for r in c.execute(text(
             "SELECT category, kind, monthly_cents, updated_by, check_after FROM spending_target"))}
     assert got == {"giving": ("commitment", 20_000, 1, None), "childcare_education": ("commitment", None, 1, None),

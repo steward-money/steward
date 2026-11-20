@@ -1,6 +1,7 @@
 """P2 (docs/CLAIMS.md): Steward's own code and pages send no telemetry. No dependency is an analytics or crash-report
 package, no source or page names such a service's host, the page loads nothing from another origin, and the gateway
 gateway turns off Hugging Face's telemetry on every install path (release spec 2026-11-05, sections 3 and 10)."""
+import ast
 import json
 import os
 import re
@@ -150,3 +151,43 @@ def test_the_telemetry_check_notices_a_telemetry_host(tmp_path):
     (tmp_path / "web/src/boot.ts").write_text("load('https://www.googletagmanager.com/gtag/js');\n")
     (tmp_path / "web/index.html").write_text("<html></html>\n")
     assert telemetry_hosts_named(tmp_path) == ["web/src/boot.ts: googletagmanager.com"]
+
+
+# Anthropic, AsyncAnthropic, and the SDK's other clients (AnthropicBedrock, AsyncAnthropicVertex, ...)
+ANTHROPIC_CLIENT = re.compile(r"^(?:Async)?Anthropic[A-Za-z]*$")
+
+
+def anthropic_clients(root: Path) -> list[tuple[str, bool]]:
+    """Each place Steward's Python under src/ and deploy/ constructs an Anthropic SDK client, as ("file:line", whether
+    the call passes open_telemetry=False)."""
+    found = []
+    for path in sorted(p for d in ("src", "deploy") for p in (root / d).rglob("*.py") if "__pycache__" not in p.parts):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            if ANTHROPIC_CLIENT.match(name):
+                off = any(k.arg == "open_telemetry" and isinstance(k.value, ast.Constant) and k.value.value is False
+                          for k in node.keywords)
+                found.append((f"{path.relative_to(root)}:{node.lineno}", off))
+    return found
+
+
+def test_every_anthropic_client_has_its_tracing_off():
+    """anthropic 1.14+ has OpenTelemetry built in: with a tracer provider in the process, a client left at the default
+    makes spans and sends their trace context (traceparent) to Anthropic. Every client Steward constructs passes
+    open_telemetry=False, so none does, whatever else in the process sets up OpenTelemetry."""
+    clients = anthropic_clients(ROOT)
+    files = {where.rsplit(":", 1)[0] for where, _ in clients}
+    assert {"src/steward_gateway/app.py", "src/steward_gateway/cli.py"} <= files, "the scan found too few clients"
+    assert [where for where, off in clients if not off] == []
+
+
+def test_the_tracing_check_notices_a_client_left_at_the_default(tmp_path):
+    (tmp_path / "src/pkg").mkdir(parents=True)
+    # "sdk", not "anthropic": test_eval_answers counts a file that calls a client on the anthropic module as one that may
+    # reach the real API
+    (tmp_path / "src/pkg/a.py").write_text("import anthropic as sdk\nc = sdk.AsyncAnthropic(api_key='k', max_retries=0)\n"
+                                           "d = sdk.Anthropic(api_key='k', open_telemetry=False)\n"
+                                           "e = AnthropicBedrock(open_telemetry=None)\n")
+    assert anthropic_clients(tmp_path) == [("src/pkg/a.py:2", False), ("src/pkg/a.py:3", True), ("src/pkg/a.py:4", False)]

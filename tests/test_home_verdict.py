@@ -7,7 +7,7 @@ from steward.db.models import AccountType, Source
 from steward.services import home as hm
 
 STALE = {"n": 2, "oldest_days": 29, "newest_days": 4, "account": None}
-SAVED = "2026-11-07T19:00:00+00:00"
+SAVED = "2026-11-07"
 
 
 def flex(category: str, level: str | None) -> dict:
@@ -22,9 +22,9 @@ def bill(category: str, state: str, *, expected: bool = True, spent: int = 10_00
 
 BASE = dict(empty=False, day=20, net=50_000, payday_day=None, typical_income=500_000, flexible=[flex("dining", "on")],
             has_flex_target=True, bills=[bill("utilities", "as_usual")], overdrawn=[],
-            plan={"age": 54, "still": True, "saved_at": SAVED}, stale=None, best_month=False)
+            plan={"age": 54, "still": True, "saved_day": SAVED}, stale=None, best_month=False)
 ON_TRACK, PAID = {"kind": "spending_on_track"}, {"kind": "bills_paid"}
-PLAN_STILL = {"kind": "plan", "age": 54, "still": True, "saved_at": SAVED}
+PLAN_STILL = {"kind": "plan", "age": 54, "still": True, "saved_day": SAVED}
 
 
 def v(**kw) -> dict:
@@ -43,7 +43,7 @@ def test_mostly_steady_with_a_little_behind_and_one_category_ahead():
 
 
 def test_a_late_bill_is_a_problem_and_otherwise_the_good_clauses_follow():
-    got = v(bills=[bill("utilities", "late", day=12)], plan={"age": 54, "still": False, "saved_at": SAVED})
+    got = v(bills=[bill("utilities", "late", day=12)], plan={"age": 54, "still": False, "saved_day": SAVED})
     assert got["opener"] == "problem"
     assert got["problems"] == [{"kind": "late_bill", "category": "utilities", "usual_day": 12}]
     assert got["clauses"] == [ON_TRACK, {**PLAN_STILL, "still": False}]                       # bills aren't all paid
@@ -125,7 +125,7 @@ def test_bills_paid_needs_an_expected_bill_all_paid():
 
 
 def test_not_by_70_has_no_plan_clause():
-    assert v(plan={"age": None, "still": False, "saved_at": SAVED})["clauses"] == [ON_TRACK, PAID]
+    assert v(plan={"age": None, "still": False, "saved_day": SAVED})["clauses"] == [ON_TRACK, PAID]
 
 
 def test_an_empty_book_says_only_that():

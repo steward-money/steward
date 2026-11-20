@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { fill, isModelChip, type Chip } from './askApi';
 import * as C from './copy';
 import { gw } from '../../lib/gatewayName';
+import { Shown } from '../../ui/Live';
 
 export function chipWhy(c: Chip, labels: Record<string, string>): string[] {
   if (isModelChip(c)) return [fill(gw(C.POP_MODEL), { what: C.WHAT_MODEL[c.label] ?? "something that could identify someone, and that isn't sent" }), C.POP_MODEL_AFTER];
@@ -47,10 +48,10 @@ export function ChipText({ text, chips, labels }: { text: string; chips: Chip[];
     <>
       <span className="willsend__text">{out}</span>
       {chip && (
-        <span className="tok-pop" role="status">
+        <Shown as="span" className="tok-pop">
           <span className="strong tok-pop__head">{isModelChip(chip) ? <ScanEye size={20} aria-hidden="true" /> : <ShieldCheck size={20} aria-hidden="true" />}{chip.label}</span>
           {chipWhy(chip, labels).map((line, i) => <span key={i} className={i ? 'small muted' : undefined}>{line}</span>)}
-        </span>
+        </Shown>
       )}
     </>
   );

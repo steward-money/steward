@@ -18,7 +18,7 @@ VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["versi
 OURS = re.compile(r"^ghcr\.io/steward-money/steward(-proxy|-gateway)?:(\S+)$")   # the images release.yml publishes
 TAILSCALE = "tailscale/tailscale:v1.104.1@sha256:87c55d6be56ad85b3d8bceca5f87f73de288c609131460dd1be1874c250cc41d"
 HEALTH = ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8420/api/health')"]
-OLLAMA = "ollama/ollama:0.40.15@sha256:0e59999e0e8f9fd4e704bd788a89b7e4cad399367fb1365f8c102ac662288761"
+OLLAMA = "ollama/ollama:0.40.16@sha256:910d0d8107b538fb0894e63163eb195de0cc7aefcbc666dc62d3b18f71124592"
 GATEWAY_HEALTH = ["CMD", "python", "-c", "import socket;socket.create_connection(('127.0.0.1', 8430), 5).close()"]
 GATEWAY_NETS = ["gateway-private", "gateway-egress"]
 PROXY_PORT = "${STEWARD_PROXY_BIND:-127.0.0.1}:"
@@ -287,7 +287,7 @@ def test_compose_parses_with_every_profile(tmp_path):
         assert p.returncode == 0, p.stderr
 
 
-OLLAMA_ROCM = "ollama/ollama:0.40.15-rocm@sha256:557fbb820145948aaba383e8214e18bb3f597f4fffb08585458c70c253e7c342"
+OLLAMA_ROCM = "ollama/ollama:0.40.16-rocm@sha256:85b3c895222b1ddc9d63c40b20fc74f37a37593dcbbdfbf28910a925e43ead00"
 # Both networks answer to "gateway": a GPU gateway must be found by the two-gateways check on either one.
 ALIASED = {"gateway-private": {"aliases": ["gateway"]}, "gateway-egress": {"aliases": ["gateway"]}}
 NVIDIA_GPU = {"resources": {"reservations": {"devices": [{"driver": "nvidia", "count": "all", "capabilities": ["gpu"]}]}}}

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { callsTo, reply, stubFetch } from '../../test-utils';
-import { FACTS, ME, atProfile, profileState } from './fixtures';
+import { FACTS, ME, atProfile, atProfileLive, profileState } from './fixtures';
 
 // withCelebrate runs its callback against a fake celebrate module, so what the page asks for is visible.
 const celebrate = vi.hoisted(() => ({ profile: vi.fn() }));
@@ -145,7 +145,8 @@ describe('Profile page', () => {
     atProfile('/profile');
     expect(await screen.findByTestId('profile-check')).toBeInTheDocument();
     expect(screen.getByTestId('profile-done')).toHaveTextContent('All five. The plan has what it needs.');
-    expect(screen.getByTestId('profile-done')).toHaveAttribute('role', 'status');
+    // Issue #51: said through the page's polite region (Live.tsx Shown), not a live region that appears with its words.
+    expect(screen.getByTestId('profile-done')).not.toHaveAttribute('role');
   });
 
   it('arriving from the last section shows the cheer, not the done line too', async () => {
@@ -154,6 +155,35 @@ describe('Profile page', () => {
     atProfile({ pathname: '/profile', state: { finished: 'banks', allDone: true } });
     expect(await screen.findByText('Your profile is complete. The Plan knows your household now.')).toBeInTheDocument();
     expect(screen.queryByTestId('profile-done')).toBeNull();
+  });
+
+  // Review of #51: the done line shows what was already true, so it is quiet when the page opens; the cheer is what
+  // the person just did, so it is said.
+  it('the done line is quiet when the page opens on a full profile', async () => {
+    const all = profileState({ you: { status: 'done' }, kids: { status: 'done' }, home: { status: 'done' }, benefits: { status: 'done' }, banks: { status: 'done' } });
+    stubFetch({ ...SUMMARIES, '/api/profile': all, '/api/facts': FACTS, '/api/auth/me': ME });
+    atProfileLive('/profile');
+    expect(await screen.findByTestId('profile-done')).toHaveTextContent('All five. The plan has what it needs.');
+    expect(screen.getByTestId('live-said')).not.toHaveTextContent('All five');
+  });
+
+  it('the cheer on arriving from the last section is said', async () => {
+    const all = profileState({ you: { status: 'done' }, kids: { status: 'done' }, home: { status: 'done' }, benefits: { status: 'done' }, banks: { status: 'done' } });
+    stubFetch({ ...SUMMARIES, '/api/profile': all, '/api/facts': FACTS, '/api/auth/me': ME });
+    atProfileLive({ pathname: '/profile', state: { finished: 'banks', allDone: true } });
+    await waitFor(() => expect(screen.getByTestId('live-said')).toHaveTextContent('Your profile is complete. The Plan knows your household now.'));
+  });
+
+  it('the done line is said when the profile becomes full while the page is open', async () => {
+    const four = profileState({ you: { status: 'done' }, kids: { status: 'done' }, home: { status: 'done' }, benefits: { status: 'done' } }, { seen: false });
+    const all = profileState({ you: { status: 'done' }, kids: { status: 'done' }, home: { status: 'done' }, benefits: { status: 'done' }, banks: { status: 'done' } });
+    let seen = false;
+    stubFetch({ ...SUMMARIES, '/api/profile': () => reply(seen ? all : four), '/api/facts': FACTS, '/api/auth/me': ME,
+      'POST /api/profile/seen': () => { seen = true; return reply(all); } });
+    atProfileLive('/profile');
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
+    expect(await screen.findByTestId('profile-done')).toBeInTheDocument();
+    expect(screen.getByTestId('live-said')).toHaveTextContent('All five. The plan has what it needs.');
   });
 
   it('arriving without a finished section plays nothing', async () => {

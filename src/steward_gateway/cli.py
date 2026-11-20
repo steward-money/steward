@@ -114,7 +114,7 @@ def check():
         typer.echo(NO_KEY.format(path=cfg.env_path))
         raise typer.Exit(1)
     try:
-        typer.echo(check_key(cfg, anthropic.Anthropic(api_key=key, max_retries=2)))
+        typer.echo(check_key(cfg, anthropic.Anthropic(api_key=key, max_retries=2, open_telemetry=False)))
     except anthropic.AuthenticationError:
         typer.echo("Anthropic refused the key. Check the line in gateway.env, or make a new key.")
         raise typer.Exit(1)
@@ -318,7 +318,7 @@ def _real_api(cfg: GatewayConfig, what: str, yes: bool):
     if not detectors:
         typer.echo(problem or "The redaction models didn't load, so nothing was sent.")
         raise typer.Exit(1)
-    return anthropic.AsyncAnthropic(api_key=key, max_retries=0), detectors, ledger
+    return anthropic.AsyncAnthropic(api_key=key, max_retries=0, open_telemetry=False), detectors, ledger
 
 
 @eval_app.command("answers")

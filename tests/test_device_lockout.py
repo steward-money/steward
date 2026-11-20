@@ -60,6 +60,9 @@ def test_someone_elses_wrong_tries_lock_out_only_their_device_and_the_threat_mod
     assert "copied session" in s5 and "30 wrong passwords" in s5
     assert "last four accounts" in s5 and "signed in before 0.1.1" in s5   # the notes' limits (Argon review)
     assert "counts as signed in again" not in s5               # a signed-in request no longer makes a device known
+    assert "a username and its email count apart" in s5 and "five more at its email" in s5   # issue #50
+    assert "per device and name, or per device and account once the device has signed in" in s5
+    assert "five wrong at its username and email together lock it there" in s5   # a known device
 
 
 def test_a_guesser_that_drops_the_cookie_is_counted_by_its_address(app, client, ddb):
@@ -212,11 +215,140 @@ def test_a_lock_and_a_wrong_password_take_one_password_hash_each(app, client, dd
 def test_a_new_password_opens_every_device_again(client, ddb):
     """A reset link, a manager's reset or steward reset-password, in this process or another."""
     u = create_user(ddb, "jr", "jr@x.com", "JR", PW)
-    for _ in range(LOCK_AFTER):
-        _try(client, "guess")
-    assert _try(client, PW).json() == WRONG
+    for typed in ("jr", "jr@x.com"):                            # the username's count and the email's
+        for _ in range(LOCK_AFTER):
+            _try(client, "guess", typed)
+        assert _try(client, PW, typed).json() == WRONG
     set_password(ddb, u, "pw-four-five-6")
+    assert _try(client, "pw-four-five-6", "jr@x.com").status_code == 200
+    assert client.post("/api/auth/logout").status_code == 204
+    client.cookies.clear()                                      # a new device: the address's count at the username
     assert _try(client, "pw-four-five-6").status_code == 200
+
+
+def _reaches_the_password_check(monkeypatch):
+    """Counts the tries that get past the device and address locks to users.check_login: a lock answers before it."""
+    from steward.auth import users
+    real, calls = users.check_login, []
+
+    def counted(*args, **kwargs):
+        calls.append(args[1])
+        return real(*args, **kwargs)
+    monkeypatch.setattr(users, "check_login", counted)
+    return calls
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_a_username_and_its_email_count_apart_whether_or_not_the_account_exists(app, ddb, monkeypatch, exists):
+    """Argon round (issue #50): keyed by the account, four wrong at the email and one at the username locked the
+    sixth only for a real account, which showed that the two were one account. The counts go by the name as typed
+    (as find_user matches it, case and spaces aside), so neither locks here, real or not."""
+    if exists:
+        create_user(ddb, "alice", "alice@example.com", "Alice", PW)
+    reached = _reaches_the_password_check(monkeypatch)
+    with _elsewhere(app, "10.0.8.1") as guesser:
+        for typed in ["alice@example.com", " Alice@Example.com ", "ALICE@example.com", "alice@example.com", "alice"]:
+            assert _try(guesser, "guess", typed).json() == WRONG
+        sixth = _try(guesser, PW if exists else "guess", "alice@example.com")
+    assert len(reached) == 6                                    # the sixth was checked, not answered by a lock
+    assert sixth.status_code == (200 if exists else 401)
+
+
+@pytest.mark.parametrize("exists", [True, False])
+@pytest.mark.parametrize("typed", ["alice", "alice@example.com"])
+def test_five_wrong_at_one_name_lock_that_name_on_this_device_whether_or_not_it_exists(app, ddb, monkeypatch,
+                                                                                         exists, typed):
+    if exists:
+        create_user(ddb, "alice", "alice@example.com", "Alice", PW)
+    reached = _reaches_the_password_check(monkeypatch)
+    with _elsewhere(app, "10.0.8.2") as guesser:
+        for _ in range(LOCK_AFTER):
+            assert _try(guesser, "guess", f" {typed.upper()} ").json() == WRONG
+        assert _try(guesser, PW, typed).json() == WRONG         # locked here, even with the right password
+    assert len(reached) == LOCK_AFTER
+
+
+def test_signing_in_by_username_clears_the_emails_count_too(app, ddb):
+    """A sign-in clears the device's and the address's counts at both of the account's names."""
+    create_user(ddb, "jr", "jr@x.com", "JR", PW)
+    with _elsewhere(app, "10.0.8.3") as c:
+        for _ in range(LOCK_AFTER - 1):
+            c.cookies.clear()                                   # a new device each try: the address counts
+            assert _try(c, "guess", "jr@x.com").json() == WRONG
+        c.cookies.clear()
+        assert _try(c, PW, "jr").status_code == 200
+        for _ in range(LOCK_AFTER - 1):
+            c.cookies.clear()
+            assert _try(c, "guess", "jr@x.com").json() == WRONG
+        c.cookies.clear()
+        assert _try(c, PW, "jr@x.com").status_code == 200       # eight wrong at the email, but four since the sign-in
+
+
+def test_wrong_current_passwords_count_at_the_username_and_the_email(app, client, ddb):
+    """A password check has no typed name, so it is held by, and charged to, both of the account's names: a copied
+    session can't take five at the check and five more at sign-in by email."""
+    create_user(ddb, "jr", "jr@x.com", "JR", PW)
+    assert _try(client, PW).status_code == 200
+    with _copied_session(app, client, "10.0.8.4") as thief:
+        _load_a_page(app, thief)
+        for _ in range(LOCK_AFTER):
+            assert thief.post("/api/auth/password", json=CHANGE).status_code == 403
+        for typed in ("jr", "jr@x.com"):
+            assert _try(thief, PW, typed).json() == WRONG       # this device, held at both names
+
+
+def test_five_wrong_sign_ins_at_the_email_hold_the_password_check(app, client, ddb):
+    """The other way round: the check is held by the email's count as well as the username's."""
+    create_user(ddb, "jr", "jr@x.com", "JR", PW)
+    assert _try(client, PW).status_code == 200
+    with _copied_session(app, client, "10.0.8.5") as thief:
+        _load_a_page(app, thief)
+        for _ in range(LOCK_AFTER):
+            assert _try(thief, "guess", "jr@x.com").json() == WRONG
+        assert thief.post("/api/auth/password", json=CHANGE).status_code == 423
+
+
+def test_a_right_current_password_clears_the_emails_count_too(app, client, ddb):
+    """Checked by a caller that leaves the password as it is (a new password would start every count afresh anyway)."""
+    create_user(ddb, "jr", "jr@x.com", "JR", PW)
+    assert _try(client, PW).status_code == 200
+    with _copied_session(app, client, "10.0.8.6") as thief:
+        _load_a_page(app, thief)
+        for _ in range(LOCK_AFTER - 1):
+            assert _try(thief, "guess", "jr@x.com").json() == WRONG
+        r = thief.post("/api/auth/passkeys/register/options", json={"current_password": PW})
+        assert r.status_code == 200
+        assert _try(thief, "guess", "jr@x.com").json() == WRONG
+        assert _try(thief, PW, "jr@x.com").status_code == 200   # five wrong at the email, but one since the check
+
+
+def test_a_password_check_charges_the_address_total_once_for_both_names(app, ddb):
+    """A wrong current password counts under the username and the email, but is one wrong try for the address's
+    total: fifteen from three copied sessions, each held at five by its own names, leave the address open."""
+    address = "10.0.8.7"
+    for name in ("jr", "vee", "sam"):
+        create_user(ddb, name, f"{name}@x.com", name.title(), PW)
+        with _elsewhere(app, "10.0.9.1") as phone:
+            assert _try(phone, PW, name).status_code == 200
+            with _copied_session(app, phone, address) as thief:
+                for _ in range(LOCK_AFTER):
+                    _load_a_page(app, thief)                    # a new device each try
+                    assert thief.post("/api/auth/password", json=CHANGE).status_code == 403
+    assert len(app.state.device_lockouts._addresses[address].stamps) == 3 * LOCK_AFTER
+    create_user(ddb, "kit", "kit@x.com", "Kit", PW)
+    with _elsewhere(app, address) as other:
+        assert _try(other, PW, "kit").status_code == 200        # 15 of the address's 30
+
+
+def test_a_known_device_has_five_for_the_account_at_both_names(client, ddb):
+    """A device that signed in to the account already knows that its username and email go together, so it counts by
+    the account: five in all, not five at each name."""
+    create_user(ddb, "jr", "jr@x.com", "JR", PW)
+    _the_owners_phone(client)
+    for typed in ["jr"] * 3 + ["jr@x.com"] * 2:
+        assert _try(client, "guess", typed).json() == WRONG
+    assert _try(client, PW, "jr").json() == WRONG
+    assert _try(client, PW, "jr@x.com").json() == WRONG
 
 
 def test_signing_in_clears_this_devices_count(client, ddb):

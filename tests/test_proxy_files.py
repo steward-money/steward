@@ -8,10 +8,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 PROXY = ROOT / "deploy/proxy"
 # Pinned versions, kept in step with deploy/proxy/Dockerfile.
-CADDY = "2.11.7"
+CADDY = "2.11.9"
 CLOUDFLARE_MODULE = "v0.2.4"
-BUILDER = "caddy:2.11.7-builder@sha256:d842facfd63b960922e57444ff76fd8f0793a66dfdcf481af8026e1f4e6a39b4"
-RUNTIME = "caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
+BUILDER = "caddy:2.11.9-builder@sha256:345264d8c6b50f44f4a4d507d4e6b6bcae40eef2f210d70f76e717fd8cc31baf"
+RUNTIME = "caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0"
 TOKEN = "0" * 40
 CURL = "8.23.0-r0"      # Alpine's curl in the runtime base's branch; the build fails once Alpine drops it
 

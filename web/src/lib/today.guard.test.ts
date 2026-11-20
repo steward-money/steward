@@ -56,6 +56,57 @@ function deviceMidnights(text: string): string[] {
 const HOUSEHOLD_DAY = /\b(?:dayOf|localYmd|dateLabelFromIso|today|thisYear)\(/;
 const DEVICE_TIME = /\.toLocaleTimeString\(/;
 
+// #52: a saved plan is named by the day the server sends (saved_day, the household's day); Taxes builds its sentence on
+// the server from the same day. Turning the saved instant into a day in the browser is how Home and Plan came to differ
+// from Taxes. A pattern for "saved_at handed to a day helper" misses a call split over lines, a nested call and an
+// alias, so instead every mention of saved_at in app code (comments aside) must be one of these spots, each with why.
+const SAVED_AT_ALLOWED: { file: string; code: string; why: string }[] = [
+  { file: 'screens/plan/api.ts', code: 'id: number; saved_at: string; saved_day: string;',
+    why: "SavedPlan's type: GET /plan, POST /plan and /plan/history send the instant beside the day" },
+  { file: 'screens/plan/api.ts', code: 'likely_age: number | null; saved_at: string; saved_day: string }',
+    why: "LastSaved's type: the 503 body's last save sends the instant beside the day" },
+  { file: 'screens/plan/usePlanSave.ts', code: 'at: res.plan.saved_at,',
+    why: "SavedNote.at: levers.savedWhen uses it only for the household's clock time of a save made today (clockTime)" },
+  { file: 'screens/plan/fixtures.ts', code: "plan: { id: 7, saved_at: '2026-10-12T19:00:00+00:00', saved_day: '2026-10-12',",
+    why: "test data shaped like GET /plan's answer" },
+];
+
+// `text` with its line and block comments blanked (newlines kept, so line numbers hold). Strings are kept.
+function code(text: string): string {
+  let out = '';
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      out += c;
+      if (c === '\\') out += text[++i] ?? '';
+      else if (c === quote) quote = null;
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i + 1 < text.length && text[i + 1] !== '\n') i++;
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const stop = end < 0 ? text.length : end + 2;
+      out += text.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop - 1;
+    } else {
+      if (c === "'" || c === '"' || c === '`') quote = c;
+      out += c;
+    }
+  }
+  return out;
+}
+
+/** Each line of `text` that mentions saved_at in code and isn't an allowed spot of `rel`, as "rel:line". */
+function savedAtSpots(rel: string, text: string): string[] {
+  const allowed = SAVED_AT_ALLOWED.filter((a) => a.file === rel);
+  const found: string[] = [];
+  code(text).split('\n').forEach((line, i) => {
+    const rest = allowed.reduce((l, a) => l.replace(a.code, ''), line);
+    if (/\bsaved_at\b/.test(rest)) found.push(`${rel}:${i + 1}`);
+  });
+  return found;
+}
+
 describe("the household's today is the only today (issue #26)", () => {
   it('reads the whole app', () => { expect(FILES.length).toBeGreaterThan(300); });
 
@@ -77,7 +128,27 @@ describe("the household's today is the only today (issue #26)", () => {
     expect(FILES.filter((rel) => { const t = read(rel); return HOUSEHOLD_DAY.test(t) && DEVICE_TIME.test(t); })).toEqual([]);
   });
 
+  it("names a saved plan by the server's saved_day, never by its instant (#52)", () => {
+    const apps = readdirSync(src('../'), { recursive: true, encoding: 'utf8' })
+      .map((f) => f.replace(/\\/g, '/')).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !/(^|\/)test-[^/]*$/.test(f));
+    expect(apps.flatMap((rel) => savedAtSpots(rel, read(rel)))).toEqual([]);
+    // Each allowed spot is still there, once: one that moved or went comes off the list rather than cover another line.
+    expect(SAVED_AT_ALLOWED.filter((a) => code(read(a.file)).split('\n').filter((l) => l.includes(a.code)).length !== 1)).toEqual([]);
+  });
+
   it('catches each shape it names', () => {
+    // #52's lines as they were, and the three shapes the review named: a split call, a nested call and an alias.
+    expect(savedAtSpots('lib/headline.ts', 'date: dateLabelFromIso(c.saved_at, today) });')).toEqual(['lib/headline.ts:1']);
+    expect(savedAtSpots('screens/plan/savedNote.ts', 'if (localYmd(n.previous.saved_at) !== today(now))')).toHaveLength(1);
+    expect(savedAtSpots('screens/home/Signs.tsx', 'const label = dateLabelFromIso(\n  plan.saved_at,\n  today);')).toEqual(['screens/home/Signs.tsx:2']);
+    expect(savedAtSpots('screens/plan/Overview.tsx', 'dateLabelFromIso(newest(history).saved_at, today)')).toHaveLength(1);
+    expect(savedAtSpots('screens/plan/HistorySheet.tsx', 'const { saved_at: when } = p;\nreturn dateLabelFromIso(when, today);')).toHaveLength(1);
+    expect(savedAtSpots('screens/plan/change.ts', "const when = p['saved_at'];")).toHaveLength(1);
+    // An allowed spot passes only in its own file. The day, and saved_at in a comment, never count.
+    expect(savedAtSpots('screens/plan/usePlanSave.ts', 'const n = { at: res.plan.saved_at, day: res.plan.saved_day };')).toEqual([]);
+    expect(savedAtSpots('screens/plan/levers.ts', 'const n = { at: res.plan.saved_at, day: res.plan.saved_day };')).toHaveLength(1);
+    expect(savedAtSpots('screens/plan/usePlanSave.ts', 'const n = { at: res.plan.saved_at, day: dayOf(res.plan.saved_at) };')).toHaveLength(1);
+    expect(savedAtSpots('lib/headline.ts', "date: dateLabel(c.saved_day, today), // not c.saved_at\n/* saved_at */ const u = 'https://x';")).toEqual([]);
     // The two lines the review found, as they were.
     expect(deviceMidnights("dateLabelFromIso(p.saved_at, new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1))")).toHaveLength(1);
     expect(SHAPES.some(([, re]) => re.test('if (d.toDateString() !== now.toDateString()) return x;'))).toBe(true);

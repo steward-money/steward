@@ -31,6 +31,14 @@
 - [How Ask stays private](explanations/ask.md): one question, followed from keyboard to answer.
 - [Threat model](explanations/threat-model.md): what Steward protects, from whom, and where that stops.
 
+## Releases
+
+What changed in each release, what to do before upgrading, and how to check the images. The same notes are on the [Releases page](https://github.com/steward-money/steward/releases).
+
+- [0.1.2](releases/0.1.2.md)
+- [0.1.1](releases/0.1.1.md)
+- [0.1.0](releases/0.1.0.md)
+
 ## Reviews
 
 The 0.1.0 release gate's summaries: what each review checked, what it found, what was fixed and what's left.

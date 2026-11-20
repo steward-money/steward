@@ -38,7 +38,7 @@ def test_0014_adds_business_and_downgrades_cleanly(settings):
     assert set(inspect(eng).get_table_names()) == before | {"business_rule", "business_state", "care_setup", "care_quote", "care_scenario", "tax_state", "spending_target", "spending_prefs", "set_aside", "set_aside_match", "set_aside_dismissed", "transaction_note", "undo_entry", "reimburser", "trip", "reimburse_rule", "reimburse_settlement", "account_feed", "held_feed", "same_account_answer", "feed_txn_alias", "expense_ratio_override", "positions_mapping", "positions_import", "undo_text", "home_visit", "import_set", "import_layout", "import_hint", "statement_stage", "statement_layout"}
     assert {c["name"] for c in inspect(eng).get_columns("transaction")} == cols_before | NEW_COLUMNS
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         rows = c.execute(text("SELECT id, business_pct, business_source, business_line, business_hint, is_business "
                               "FROM \"transaction\" ORDER BY id")).all()
     assert [tuple(r) for r in rows] == [(1, 0, "none", None, None, 0), (2, 100, "manual", None, None, 1),

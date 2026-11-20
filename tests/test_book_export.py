@@ -111,7 +111,7 @@ def test_secrets_are_stripped_and_the_meta_is_inside(books, ours, db, settings, 
         meta = dict(c.execute(text("SELECT key, value FROM export_meta")).all())
         assert c.execute(text("PRAGMA integrity_check")).scalar() == "ok"
     eng.dispose()
-    assert {k: meta[k] for k in ("kind", "name", "revision")} == {"kind": "household", "name": ours.name, "revision": "0037"}
+    assert {k: meta[k] for k in ("kind", "name", "revision")} == {"kind": "household", "name": ours.name, "revision": "0038"}
     assert json.loads(meta["owner_names"]) and meta["exported_at"] == NOW.isoformat()
     raw = (tmp_path / "out" / "book.db").read_bytes()
     assert b"s3cret-token" not in raw and b"zorblax" not in raw

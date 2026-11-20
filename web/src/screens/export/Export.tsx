@@ -10,6 +10,7 @@ import { Notice } from '../../ui/Notice';
 import { failure } from '../settings/shared';
 import './export.css';
 import { thisYear } from '../../lib/today';
+import { Shown } from '../../ui/Live';
 
 // Import/export spec, Copy: Export (Show is plan-owned, Engineering choice 13).
 const C = {
@@ -90,7 +91,7 @@ function Backup({ slug, go }: { slug: string; go: (url: string) => void }) {
           <Button type="submit" busy={busy}>{C.button}</Button>
           <Button variant="quiet" aria-pressed={show} onClick={() => setShow((s) => !s)}>{C.show}</Button>
         </div>
-        {busy && <p className="small" role="status">{C.busy}</p>}
+        {busy && <Shown className="small">{C.busy}</Shown>}
         {error && <Notice tone="error">{error}</Notice>}
       </fieldset>
     </form>

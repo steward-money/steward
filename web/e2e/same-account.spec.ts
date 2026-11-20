@@ -40,7 +40,7 @@ test.describe('Same account? (the screenshot gate)', () => {
       await page.getByRole('button', { name: 'Merge into…' }).click();
       const sheet = page.getByRole('dialog', { name: `Merge ${p.name} into…` });
       await sheet.getByRole('radio', { name: new RegExp(`^${p.other}`) }).check();
-      await expect(sheet.getByRole('status')).toHaveText('No transactions match; 5 will move over.');
+      await expect(sheet.getByTestId('merge-preview')).toHaveText('No transactions match; 5 will move over.');
       await shot(page, info.project.name, `merge-into-${theme}`);
     });
 
@@ -79,9 +79,9 @@ test.describe('Same account? (the screenshot gate)', () => {
       await page.getByRole('button', { name: 'Merge into…' }).click();
       const sheet = page.getByRole('dialog', { name: `Merge ${p.name} into…` });
       await sheet.getByRole('radio', { name: new RegExp(`^${p.other}`) }).check();
-      await expect(sheet.getByRole('status')).toBeVisible();
+      await expect(sheet.getByTestId('merge-preview')).toBeVisible();
       await sheet.getByRole('button', { name: `Merge into ${p.other}` }).click();
-      await expect(page.getByText('One account, as it should be.')).toBeVisible();
+      await expect(page.getByRole('main').getByText('One account, as it should be.')).toBeVisible();
       await expect(page.getByRole('heading', { level: 1, name: p.other })).toBeVisible();
       await shot(page, info.project.name, `merged-note-${theme}`);
     });
@@ -99,8 +99,8 @@ test('merging the second login counts the account once and leaves no copies', as
   expect(before.ids).toHaveLength(1);                         // held, the second login's copy isn't an account
   await page.goto('/b/ours/accounts');
   await card(page, p.bank).getByRole('button', { name: 'Merge them' }).click();
-  await expect(page.getByText(`Merged. ${p.name} now gets updates from both logins; 5 copies were dropped and 1 new transaction kept.`)).toBeVisible();
-  await expect(page.getByText('One account, as it should be.')).toBeVisible();
+  await expect(page.getByRole('main').getByText(`Merged. ${p.name} now gets updates from both logins; 5 copies were dropped and 1 new transaction kept.`)).toBeVisible();
+  await expect(page.getByRole('main').getByText('One account, as it should be.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
   const after = { summary: await get('/summary'), review: await get('/review'), ids: named((await get('/accounts')).accounts) };
   expect(after.summary.net_worth_cents).toBe(before.summary.net_worth_cents);    // counted once, before and after

@@ -40,7 +40,7 @@ describe('the You menu (decision 4)', () => {
     stubFetch({ '/api/auth/me': ME, 'POST /api/auth/logout': () => new Response(null, { status: 204 }) });
     const moved = withAssumed(EMPTY_DRAFT, 'save_more_monthly_cents', 25000);
     keepDraft(draftKey(1, 7), moved);
-    setSavedNote({ planId: 7, at: '2026-10-28T12:00:00Z', by: 'JR', previous: null });
+    setSavedNote({ planId: 7, at: '2026-10-28T12:00:00Z', day: '2026-10-28', by: 'JR', previous: null });
     try {
       wrapBook(<Routes><Route path="/login" element={<p>Sign in</p>} /><Route path="*" element={<YouMenu variant="bar" />} /></Routes>, ME.books[0], '/b/ours');
       fireEvent.click(await screen.findByRole('button', { name: 'You: JR Hale' }));

@@ -14,7 +14,7 @@
 name: steward
 
 x-proxy: &proxy
-  image: ghcr.io/steward-money/steward-proxy:0.1.1
+  image: ghcr.io/steward-money/steward-proxy:0.1.2
   restart: unless-stopped
   env_file:
     - path: proxy.env
@@ -34,7 +34,7 @@ x-proxy: &proxy
     - steward
 
 x-gateway: &gateway
-  image: ghcr.io/steward-money/steward-gateway:0.1.1
+  image: ghcr.io/steward-money/steward-gateway:0.1.2
   restart: unless-stopped
   volumes:
     - gateway-config:/etc/steward-gateway
@@ -63,7 +63,7 @@ x-gateway: &gateway
 # no model names, half-done downloads included, so without it a restart of any Ollama on the shared models volume
 # during a pull (compose up, a watchdog, an update) would delete that pull's partial download.
 x-ollama: &ollama
-  image: ollama/ollama:0.40.15@sha256:0e59999e0e8f9fd4e704bd788a89b7e4cad399367fb1365f8c102ac662288761
+  image: ollama/ollama:0.40.16@sha256:910d0d8107b538fb0894e63163eb195de0cc7aefcbc666dc62d3b18f71124592
   restart: unless-stopped
   environment:
     OLLAMA_NO_CLOUD: "1"
@@ -77,7 +77,7 @@ x-ollama: &ollama
 
 services:
   steward:
-    image: ghcr.io/steward-money/steward:0.1.1
+    image: ghcr.io/steward-money/steward:0.1.2
     restart: unless-stopped
     ports:
       - "127.0.0.1:8420:8420"
@@ -254,7 +254,7 @@ services:
   # under Ollama's own license; Compose may pull it before the license is accepted.
   ollama-amd:
     <<: *ollama
-    image: ollama/ollama:0.40.15-rocm@sha256:557fbb820145948aaba383e8214e18bb3f597f4fffb08585458c70c253e7c342
+    image: ollama/ollama:0.40.16-rocm@sha256:85b3c895222b1ddc9d63c40b20fc74f37a37593dcbbdfbf28910a925e43ead00
     profiles: ["gateway-amd"]
     networks:
       gateway-private:

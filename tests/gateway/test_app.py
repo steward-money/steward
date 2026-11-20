@@ -1,4 +1,5 @@
 """The gateway's HTTP and WebSocket surface, with stand-in detectors and the fake Anthropic server."""
+import asyncio
 import os
 import re
 from dataclasses import replace
@@ -8,9 +9,11 @@ import anthropic
 import pytest
 from fastapi.routing import APIRoute, APIWebSocketRoute
 from fastapi.testclient import TestClient
+from opentelemetry.trace import NonRecordingSpan, NoOpTracer, SpanContext, TraceFlags, TracerProvider
 from starlette.websockets import WebSocketDisconnect
 
-from steward_gateway.app import create_gateway_app
+from steward_gateway.app import create_gateway_app, make_client
+from steward_gateway.config import FALLBACK_BETA
 from steward_gateway.mcp import grants as G
 from steward_gateway.pairing import arm
 from steward_gateway.prompt import prewarm_payload
@@ -18,7 +21,7 @@ from steward_gateway.redact.patterns import PatternDetector
 from steward_gateway.secrets import write_private
 from tests.gateway.fake_anthropic import FakeAnthropic, Reply, text
 from tests.gateway.fakes import FakeNas, FakeOllama, NameListDetector
-from tests.gateway.test_loop import start_frame
+from tests.gateway.test_loop import assert_sent_headers, start_frame
 from tests.servers import serve_in_thread
 
 TOKEN = "c" * 64
@@ -37,7 +40,7 @@ def fake():
 def client_for(gw_cfg, fake, paired=True, with_client=True, detectors=None, ollama=None):
     if paired:
         write_private(gw_cfg.token_path, TOKEN)
-    api = anthropic.AsyncAnthropic(api_key="test-key-not-real", base_url=fake.url, max_retries=0) if with_client else None
+    api = make_client(replace(gw_cfg, anthropic_base_url=fake.url), "test-key-not-real") if with_client else None
     app = create_gateway_app(gw_cfg, detectors=[PatternDetector(), NameListDetector()] if detectors is None else detectors,
                              client=api, now=lambda: NOW, ollama=ollama)
     return TestClient(app)
@@ -199,6 +202,143 @@ def test_prewarm_sends_the_prefix_once_per_five_minutes(gw_cfg, fake):
     assert len(fake.requests) == 1
     body = fake.requests[0]
     assert body["max_tokens"] == 0 and "stream" not in body and body["messages"] == [{"role": "user", "content": "warmup"}]
+
+
+def test_the_prewarm_request_carries_the_key_once_and_no_header_outside_the_list(gw_cfg, fake):
+    """The warm-up goes out on the plain messages.create, not the beta stream a turn uses: the same key, API version
+    and header list as a turn's requests (test_loop), and no beta header at all."""
+    with client_for(gw_cfg, fake) as c:
+        plan = c.post("/v1/prewarm/plan", json={"book_id": 1, "user_id": 2}, headers=AUTH).json()
+        assert c.post("/v1/prewarm", json={"book_id": 1, "user_id": 2, "sha256": plan["sha256"]},
+                      headers=AUTH).json()["sent"] is True
+    assert len(fake.headers) == 1
+    assert_sent_headers(fake.headers[0], beta=None)
+
+
+def prewarm_ledger(gw_cfg, script, ready=None, release=None):
+    """One /v1/prewarm on the gateway's own client, run in this loop so it can be cancelled mid-request (the gateway
+    stopping) once `ready()` returns. `release` frees a fake answer the script is holding, before the fake server
+    stops (it refuses to leave a handler running). Returns the ledger."""
+    import httpx2
+    from steward_gateway.ledger import Ledger
+    from tests.waiting import CEILING
+    f = FakeAnthropic(script)
+    ledger = Ledger(gw_cfg.ledger_path, gw_cfg.timezone, 1000, gw_cfg.max_cap_cents, gw_cfg.default_model)
+    write_private(gw_cfg.token_path, TOKEN)
+    with serve_in_thread(f.app()) as url:
+        async def go():
+            api = make_client(replace(gw_cfg, anthropic_base_url=url), "test-key-not-real")
+            app = create_gateway_app(gw_cfg, detectors=[PatternDetector(), NameListDetector()], client=api,
+                                     ledger=ledger, now=lambda: NOW)
+            try:
+                async with app.router.lifespan_context(app), httpx2.AsyncClient(
+                        transport=httpx2.ASGITransport(app=app), base_url="http://gateway") as c:
+                    plan = (await c.post("/v1/prewarm/plan", json={"book_id": 1, "user_id": 2}, headers=AUTH)).json()
+                    call = asyncio.create_task(c.post("/v1/prewarm", json={"book_id": 1, "user_id": 2,
+                                                                          "sha256": plan["sha256"]}, headers=AUTH))
+                    if ready is None:
+                        return (await call).json()
+                    await asyncio.wait_for(ready(), CEILING)
+                    call.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await call
+            finally:
+                await api.close()
+        try:
+            asyncio.run(go())
+        finally:
+            if release:
+                release()
+    return ledger, f
+
+
+def test_a_prewarm_cancelled_before_it_goes_out_releases_its_reservation(gw_cfg, monkeypatch):
+    """Argon 2.3: a CancelledError isn't an Exception, so a prewarm cancelled mid-request (the gateway stopping) used
+    to leave its reservation open until the next start settled it in full. Nothing was written yet (and the client's
+    trace has been seen working), so it releases."""
+    from steward_gateway import sending
+    from tests.gateway.test_loop import network_wait, statuses
+    monkeypatch.setattr(sending, "_traced", True)
+    entered = network_wait(monkeypatch)
+    ledger, f = prewarm_ledger(gw_cfg, lambda b, n: Reply([]), entered.wait)
+    assert f.requests == [] and statuses(ledger) == ["released"]
+
+
+def test_a_prewarm_answered_counts_in_full_when_the_trace_never_fires(gw_cfg, monkeypatch):
+    """Review finding 1, for the prewarm: a response came back, so its response hook marks it sent even when the
+    trace said nothing; the body then broke, so it may have been billed."""
+    from steward_gateway import sending
+    from tests.gateway.test_loop import rename_the_trace, statuses
+    rename_the_trace(monkeypatch)
+    monkeypatch.setattr(sending, "_traced", True)
+    ledger, f = prewarm_ledger(gw_cfg, lambda b, n: Reply([], sse=[], cut=True))
+    assert len(f.requests) == 1 and statuses(ledger) == ["settled"]
+
+
+def test_a_prewarm_cancelled_after_it_went_out_counts_in_full(gw_cfg):
+    import threading
+    from tests.gateway.test_loop import statuses
+    from tests.waiting import CEILING
+    arrived, answer = threading.Event(), threading.Event()
+    try:
+        ledger, f = prewarm_ledger(gw_cfg, lambda b, n: Reply([], arrived=arrived, answer=answer),
+                                   lambda: asyncio.to_thread(arrived.wait, CEILING), release=answer.set)
+    finally:
+        answer.set()
+    assert len(f.requests) == 1 and statuses(ledger) == ["settled"]
+
+
+@pytest.mark.parametrize("reply, status", [(Reply([], status=529, error_type="overloaded_error"), "released"),
+                                           (Reply([], sse=[], cut=True), "settled")], ids=["refused", "dropped"])
+def test_a_failed_prewarm_releases_only_when_nothing_could_be_billed(gw_cfg, reply, status):
+    """The same rule as a turn's requests: an error status is a refusal and costs nothing; a connection that broke
+    after the request went out may still be billed, so it counts in full."""
+    from tests.gateway.test_loop import statuses
+    ledger, f = prewarm_ledger(gw_cfg, lambda b, n: reply)
+    assert len(f.requests) == 1 and statuses(ledger) == [status]
+
+
+class SpanningTracer(NoOpTracer):
+    """What a tracer from a working provider (opentelemetry-sdk's, say) gives: spans with a valid trace context, which
+    the SDK sends to Anthropic as traceparent unless the client's tracing is off. Built on opentelemetry-api alone,
+    which is installed; opentelemetry-sdk is not."""
+
+    def start_span(self, name, context=None, *args, **kwargs):
+        return NonRecordingSpan(SpanContext(trace_id=0x5EED, span_id=0xBEEF, is_remote=False,
+                                            trace_flags=TraceFlags(TraceFlags.SAMPLED)))
+
+
+class SpanningProvider(TracerProvider):
+    def get_tracer(self, *args, **kwargs):
+        return SpanningTracer()
+
+
+def test_the_client_sends_no_trace_context_even_with_a_global_tracer_provider(gw_cfg, fake, monkeypatch):
+    """make_client passes open_telemetry=False: with a global tracer provider set (anything else in the process could
+    set one), neither a turn's beta stream nor the warm-up's create carries traceparent, tracestate or baggage. A
+    client at the SDK's default, against the same provider, sends traceparent, so the provider here would leak."""
+    from opentelemetry import trace
+    for name in ("ANTHROPIC_OPEN_TELEMETRY", "ANTHROPIC_OPEN_TELEMETRY_PROPAGATION", "OTEL_PROPAGATORS"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(trace, "_TRACER_PROVIDER", SpanningProvider())
+
+    async def both(client):
+        try:
+            await client.messages.create(model="claude-opus-5-5", max_tokens=0,
+                                         messages=[{"role": "user", "content": "warmup"}])
+            async with client.beta.messages.stream(model="claude-opus-5-5", max_tokens=16, betas=[FALLBACK_BETA],
+                                                   messages=[{"role": "user", "content": "hi"}]) as stream:
+                await stream.get_final_message()
+        finally:
+            await client.close()
+
+    ours = make_client(replace(gw_cfg, anthropic_base_url=fake.url), "test-key-not-real")
+    asyncio.run(both(ours))
+    asyncio.run(both(anthropic.AsyncAnthropic(api_key="test-key-not-real", base_url=fake.url, max_retries=0)))
+    assert len(fake.headers) == 4
+    assert [sorted({"traceparent", "tracestate", "baggage"} & h.keys()) for h in fake.headers[:2]] == [[], []]
+    assert all(h.get("traceparent", "").startswith("00-") for h in fake.headers[2:])
+    assert ours.open_telemetry["traces"]["enabled"] is False
 
 
 def test_the_fixed_instructions_come_whole_with_the_hash_the_log_records(gw_cfg, fake):

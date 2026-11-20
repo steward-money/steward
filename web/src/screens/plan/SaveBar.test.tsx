@@ -37,11 +37,11 @@ describe('SaveBar', () => {
 
   it('keeps the confirmation after a save', () => {
     const at = new Date(2026, 9, 14, 21, 14).toISOString();
-    render(<SaveBar {...base} note={{ planId: 7, at, by: 'JR', previous: { name: 'Sam', saved_at: '2026-10-12T19:00:00+00:00' } }} />);
+    render(<SaveBar {...base} note={{ planId: 7, at, day: '2026-10-14', by: 'JR', previous: { name: 'Sam', saved_day: '2026-10-12' } }} />);
     const done = screen.getByTestId('savebar-done');
-    expect(done).toHaveAttribute('role', 'status');
+    expect(done).not.toHaveAttribute('role');      // said through the page's polite region (issue #51)
     expect(done).toHaveTextContent('Plan updated.');
-    expect(done).toHaveTextContent(/Saved by JR today at 9:14 pm\. The previous version, saved by Sam on Oct 1[23], is in Earlier versions\./);
+    expect(done).toHaveTextContent(/Saved by JR today at 9:14 pm\. The previous version, saved by Sam on Oct 12, is in Earlier versions\./);
   });
 
   it('pins itself when scrolled out of view', () => {

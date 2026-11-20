@@ -7,7 +7,7 @@
 name: steward-demo
 services:
   steward:
-    image: ghcr.io/steward-money/steward:0.1.1
+    image: ghcr.io/steward-money/steward:0.1.2
     ports:
       - "127.0.0.1:${STEWARD_DEMO_PORT:-8420}:8420"
     environment:

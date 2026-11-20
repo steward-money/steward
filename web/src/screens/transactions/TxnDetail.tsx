@@ -21,6 +21,7 @@ import { AskAbout } from '../../ui/AskAbout';
 import { Button } from '../../ui/Button';
 import { CategoryField } from '../../ui/CategoryMenu';
 import { Field } from '../../ui/Field';
+import { Shown } from '../../ui/Live';
 import { Money } from '../../ui/Money';
 import { Notice } from '../../ui/Notice';
 import { Rich } from '../../ui/Rich';
@@ -272,7 +273,7 @@ export function TxnDetail({ txn, today, onSaved, onClose, showHeader }: Props) {
             )}
           </div>
         )}
-        {either && <p className="muted detail__either" role="status">{EITHER_LINE}</p>}
+        {either && <Shown className="muted detail__either">{EITHER_LINE}</Shown>}
         {asking && (
           <Suspense fallback={null}>
             <PayerInline payers={payers} value={chosen} onChoose={setPayer} />

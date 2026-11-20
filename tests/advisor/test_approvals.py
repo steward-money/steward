@@ -486,6 +486,73 @@ def test_a_ticked_transfer_row_sends_the_name_the_card_showed_and_the_log_record
     assert json.loads(store_rows(books, ours)[0].payload)["content"] == sent["content"]
 
 
+# --- Public issue #53: the ticks go to the gateway beside the rows, which may mask a name in an unticked one ----------
+
+
+def test_the_rows_a_manager_ticked_go_beside_the_content_and_only_ticks_the_card_offered(books, ours, household):
+    jr, _ = household
+    _, sent, _, _ = zelle_turn(books, ours, jr, AutoControl("send", ticked={"r0", "r99", "p0"}))
+    assert sent["ticked"] == ["r0"] and "ticked" not in json.dumps(sent["content"])
+
+
+def test_an_approval_with_nothing_ticked_says_so(books, ours, household):
+    jr, _ = household
+    _, sent, _, _ = zelle_turn(books, ours, jr, AutoControl("send"))
+    assert sent["ticked"] == []
+
+
+def test_a_result_with_no_card_carries_no_ticks(books, ours, household):
+    jr, _ = household
+    gw = StubGateway(frames(answered("tool_result", {"error": T.DECLINED})))
+    list(run_turn(env_for(books, ours, jr, gw, AutoControl("decline")), start_turn(env_for(books, ours, jr, gw), Q)))
+    sent = next(f for f in gw.ws.sent if f["type"] == "tool_results")["results"][0]
+    assert "ticked" not in sent
+
+
+def masking(at: int, to: str):
+    def mutate(content):
+        content["rows"][at]["merchant"] = to
+        return content
+    return mutate
+
+
+@pytest.mark.parametrize("to", ["[name]", "[name]Box", "Stream[name]"])
+def test_rows_the_gateway_masked_in_an_unticked_name_are_recorded_as_sent(books, ours, household, to):
+    """The gateway may replace a person's name in an unticked row with [name] after the OK: text taken out, so the rows
+    are still the approved ones and the log records what was sent."""
+    jr, _ = household
+    gw = StubGateway(frames(answered_echo(masking(0, to))))
+    env = env_for(books, ours, jr, gw, AutoControl("send"))
+    assert list(run_turn(env, start_turn(env, Q)))[-1]["stop"] == "end_turn"
+    [row] = store_rows(books, ours)
+    assert row.approved_by == jr and json.loads(row.payload)["content"]["rows"][0]["merchant"] == to
+
+
+@pytest.mark.parametrize("to", ["StreamBox [name]", "[name] StreamBox", "Stream[name]Box!", "[NAME]"])
+def test_rows_the_gateway_added_text_to_are_never_recorded(books, ours, household, to):
+    jr, _ = household
+    gw = StubGateway(frames(answered_echo(masking(0, to))))
+    env = env_for(books, ours, jr, gw, AutoControl("send"))
+    assert list(run_turn(env, start_turn(env, Q)))[-1]["stop"] == "record_failed"
+    assert store_rows(books, ours) == []
+
+
+def test_a_ticked_row_must_go_exactly_as_the_manager_approved_it(books, ours, household):
+    """A tick is the manager's choice to send the name: the gateway can't mask it, and the NAS refuses one that did."""
+    jr, _ = household
+    with Session(books.engine_for(ours)) as db:
+        acct = db.scalar(select(Account.id).where(Account.type == AccountType.checking).order_by(Account.id))
+        db.add(Transaction(account_id=acct, posted_at=date(2026, 10, 19), amount_cents=-2500,
+                           raw_description="ZELLE PAYMENT TO PRIYA NAIR 0412", category="gifts",
+                           category_source=CategorySource.none))
+        db.commit()
+    gw = StubGateway(frames([echoed(masking(0, "Zelle to [name]")), *answered("merchant_rows", ROWS)[1:]],
+                            call=GIFTS))
+    env = env_for(books, ours, jr, gw, AutoControl("send", ticked={"r0"}))
+    assert list(run_turn(env, start_turn(env, Q)))[-1]["stop"] == "record_failed"
+    assert store_rows(books, ours) == []
+
+
 def test_the_cards_hash_covers_the_names_a_tick_could_send():
     from steward.advisor.turn import card_digest
     content = {"rows": [], "payees": [], "more": False}

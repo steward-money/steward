@@ -1,6 +1,7 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { callsTo, reply, stubFetch, wrapBook } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import Ready from './Ready';
 import type { Ready as R, ReadyRow } from './api';
 
@@ -60,7 +61,10 @@ describe('Get Steward ready', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]);
     expect(write).toHaveBeenCalledWith('STEWARD_BASE_URL=https://nas.example.ts.net');
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
-    expect(await screen.findByText('Not yet. Steward is still running with http://nas.lan:8420. Restart it after saving the file.')).toBeInTheDocument();
+    const still = 'Not yet. Steward is still running with http://nas.lan:8420. Restart it after saving the file.';
+    expect(await screen.findByText(still, { selector: 'p' })).not.toHaveAttribute('role');
+    // Issue #51: said through the sheet's polite region, which was there before the line.
+    expect(within(screen.getByRole('dialog')).getByTestId('live-said')).toHaveTextContent(still);
   });
 
   it('with no clipboard (plain http) it never says Copied: the line is selected for copying by hand, and the note says so', async () => {
@@ -81,7 +85,7 @@ describe('Get Steward ready', () => {
     wrapBook(<Ready />, {}, '/b/ours/settings/ready');
     fireEvent.click(await screen.findByRole('button', { name: /Secure address/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
-    expect(await screen.findByText('Took effect.')).toBeInTheDocument();
+    expect(await screen.findByText('Took effect.', { selector: 'p' })).toBeInTheDocument();
     expect(screen.getByText('Nothing needs you.')).toBeInTheDocument();
   });
 
@@ -89,23 +93,25 @@ describe('Get Steward ready', () => {
     let need = 1;
     stubFetch({ '/api/ready': () => reply(READY(need ? row('address', 'needs', 'x', {}, [ADDRESS_LINE]) : row('address', 'done', 'Done.'))),
       '/api/install/settings': {} });
-    const r = wrapBook(<Ready />, {}, '/b/ours/settings/ready');
+    const r = wrapBook(<LiveRegions><Ready /></LiveRegions>, {}, '/b/ours/settings/ready');
     await screen.findByText('1 needs you');
     expect(fx.acorn).not.toHaveBeenCalled();
     need = 0;
     await act(async () => { await r.qc.invalidateQueries({ queryKey: ['ready'] }); });
-    const line = await screen.findByRole('status');
-    expect(line).toHaveTextContent('Nothing needs you.');
-    expect(screen.getAllByText('Nothing needs you.')).toHaveLength(1);
+    const line = await screen.findByText('Nothing needs you.', { selector: '.ready__cheer' });
+    expect(line).not.toHaveAttribute('role');          // said through the page's polite region (issue #51)
+    expect(screen.getByTestId('live-said')).toHaveTextContent('Nothing needs you.');
+    expect(screen.getAllByText('Nothing needs you.', { selector: 'p' })).toHaveLength(1);
     await waitFor(() => expect(fx.acorn).toHaveBeenCalledWith(expect.objectContaining({ motion: 'hop' })));
     expect(fx.acorn).toHaveBeenCalledTimes(1);
   });
 
-  it('opening the page with nothing needed plays nothing', async () => {
+  it('opening the page with nothing needed plays nothing and says nothing', async () => {
     stubFetch({ '/api/ready': () => reply(READY(row('address', 'done', 'Done.'))), '/api/install/settings': {} });
-    wrapBook(<Ready />, {}, '/b/ours/settings/ready');
+    wrapBook(<LiveRegions><Ready /></LiveRegions>, {}, '/b/ours/settings/ready');
     expect(await screen.findByText('Nothing needs you.')).toBeInTheDocument();
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.ready__cheer')).toBeNull();
+    expect(screen.getByTestId('live-said').textContent).toBe('');    // already true when it opened (review of #51)
     expect(fx.acorn).not.toHaveBeenCalled();
   });
 });

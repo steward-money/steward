@@ -22,7 +22,11 @@ describe('Merge into… (same-account spec, Merging)', () => {
     await waitFor(() => expect(within(sheet).getByRole('heading', { name: 'Merge Joint Taxable into…' })).toHaveFocus());
     expect(within(sheet).getByRole('button', { name: 'Merge into…' })).toBeDisabled();
     fireEvent.click(within(sheet).getByRole('radio', { name: /^Joint Taxable/ }));
-    expect(await within(sheet).findByText('61 transactions match and will be dropped; 3 will move over.')).toBeInTheDocument();
+    const preview = await within(sheet).findByTestId('merge-preview');
+    expect(preview).toHaveTextContent('61 transactions match and will be dropped; 3 will move over.');
+    // Issue #51: said through the sheet's polite region; the line is not a live region that appears with its words.
+    expect(preview).not.toHaveAttribute('role');
+    expect(within(sheet).getByTestId('live-said')).toHaveTextContent('61 transactions match and will be dropped; 3 will move over.');
     expect(callsTo(fetchMock, 'GET', '/api/accounts/5/merge-preview')[0].url).toContain('into=3');
     fireEvent.click(within(sheet).getByRole('button', { name: 'Merge into Joint Taxable' }));
     await waitFor(() => expect(onMerged).toHaveBeenCalledWith(MERGE_REPLY));

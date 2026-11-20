@@ -40,7 +40,7 @@ def test_0032_keeps_every_rule_and_adds_partial_uniques(settings):
     eng = _at_0031(settings)
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         assert [tuple(r) for r in c.execute(text(
             "SELECT id, pattern, merchant, category, source, amount_cents, nickname, note, note_by, note_by_name "
             "FROM merchant_rule ORDER BY id"))] == [

@@ -121,7 +121,7 @@ describe('the chip (P7, P28)', () => {
     const { fetchMock } = mount({ 'POST /api/chat/about': () => reply({ error: "That isn't in this book any more." }, 404),
       'POST /api/chat/ask': () => ndjson(STARTED, DONE('From totals.')) });
     open();
-    expect(await within(panel()).findByText("That isn't in this book any more.")).toBeInTheDocument();
+    expect(await within(panel()).findByText("That isn't in this book any more.", { selector: '.ask-gone' })).toBeInTheDocument();
     await ask('Why?');
     await waitFor(() => expect(callsTo(fetchMock, 'POST', '/api/chat/ask')[0]?.body).toEqual({ question: 'Why?', conversation_id: null }));
   });

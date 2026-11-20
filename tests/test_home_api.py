@@ -122,27 +122,53 @@ def test_an_empty_book_has_nothing_to_go_on(oct25, signed_in, db):
     assert h["verdict"]["opener"] == "empty" and h["for_you"] == [] and h["since"] is None
 
 
+def plan_sign(client) -> dict | None:
+    """The plan sign without the instant it carries for one release (see the test below)."""
+    sign = home(client)["signs"]["plan"]
+    return None if sign is None else {k: v for k, v in sign.items() if k != "saved_at"}
+
+
 def test_the_plan_sign_reads_the_saved_plan_with_its_date_and_when_it_still_says_so(oct25, signed_in, db, ddb):
     """#17: Home shows the saved plan, not today's solve (Home's budget), so the sign carries when it was saved and the
-    web says so; Plan shows today's solve."""
-    def save(when: datetime, age: int | None) -> str:
+    web says so; Plan shows today's solve. #52: it sends the household's day, and the web names the save by that day,
+    not by the instant read in the device's zone."""
+    def save(when: datetime, age: int | None) -> None:
         db.add(Plan(saved_at=when, saved_by=1, levers=LEVERS, engine_version=ENGINE_VERSION, comfortable_age=age,
                     likely_age=None))
         db.commit()
-        return when.isoformat()
 
-    assert home(signed_in)["signs"]["plan"] is None
-    at = save(OCT_25 - timedelta(days=10), 54)
-    assert home(signed_in)["signs"]["plan"] == {"age": 54, "still": False, "saved_at": at}   # no last look, none before
+    assert plan_sign(signed_in) is None
+    save(OCT_25 - timedelta(days=10), 54)
+    assert plan_sign(signed_in) == {"age": 54, "still": False, "saved_day": "2026-10-15"}  # no last look, none before
     db.add(HomeVisit(user_id=_jr(ddb), seen_at=OCT_25 - timedelta(days=3)))
     db.commit()
-    assert home(signed_in)["signs"]["plan"] == {"age": 54, "still": True, "saved_at": at}    # saved before the last look
-    at = save(OCT_25 - timedelta(days=1), 55)
-    assert home(signed_in)["signs"]["plan"] == {"age": 55, "still": False, "saved_at": at}
-    at = save(OCT_25 - timedelta(hours=1), 55)
-    assert home(signed_in)["signs"]["plan"] == {"age": 55, "still": True, "saved_at": at}    # the same age as before
-    at = save(OCT_25 - timedelta(minutes=1), None)
-    assert home(signed_in)["signs"]["plan"] == {"age": None, "still": False, "saved_at": at}  # Not by 70
+    assert plan_sign(signed_in) == {"age": 54, "still": True, "saved_day": "2026-10-15"}   # saved before the last look
+    save(OCT_25 - timedelta(hours=13), 55)                         # 23:00 on Oct 24 in California, Oct 25 in UTC
+    assert plan_sign(signed_in) == {"age": 55, "still": False, "saved_day": "2026-10-24"}
+    save(OCT_25 - timedelta(hours=1), 55)
+    assert plan_sign(signed_in) == {"age": 55, "still": True, "saved_day": "2026-10-25"}   # the same age as before
+    save(OCT_25 - timedelta(minutes=1), None)
+    assert plan_sign(signed_in) == {"age": None, "still": False, "saved_day": "2026-10-25"}  # Not by 70
+
+
+def test_the_plan_signs_saved_at_is_sent_for_one_release_only(oct25, signed_in, db):
+    """#52 review: 0.1.2's Home sends saved_day, and a tab still running 0.1.1's bundle reads saved_at until it reloads.
+    The sign and the headline's plan clause keep saved_at for 0.1.2 only; this fails from 0.1.3 on until it goes."""
+    from steward import __version__
+    household(db)
+    saved = OCT_25 - timedelta(days=3)
+    db.add(Plan(saved_at=saved, saved_by=1, levers=LEVERS, engine_version=ENGINE_VERSION, comfortable_age=61,
+                likely_age=59))
+    db.commit()
+    h = home(signed_in)
+    clauses = [c for c in h["verdict"]["clauses"] if c["kind"] == "plan"]
+    assert len(clauses) == 1, h["verdict"]
+    version = tuple(int(n) for n in re.match(r"(\d+)\.(\d+)\.(\d+)", __version__).groups())
+    if version >= (0, 1, 3):
+        assert "saved_at" not in h["signs"]["plan"] and "saved_at" not in clauses[0], \
+            "remove the plan's saved_at from services/home.py (OLD_SAVED_AT)"
+    else:
+        assert h["signs"]["plan"]["saved_at"] == clauses[0]["saved_at"] == saved.isoformat()
 
 
 def test_home_never_works_out_the_plan(oct25, signed_in, db, monkeypatch):

@@ -112,9 +112,12 @@ def test_the_rows_that_hide_a_name_are_exactly_the_ones_the_docs_list():
     from steward.watch.payees import payee, words
     from steward.watch.vocab import METHOD_TITLES
 
-    def shown(raw: str, merchant: str | None = None, way: str = "to") -> str:
+    def stored(raw: str, merchant: str | None = None, way: str = "to") -> tuple[str, str | None]:
         p = payee(raw, merchant)
-        return M._store(M._row_text(p, merchant), p.key, (), raw, way=way)[0]
+        return M._store(M._row_text(p, merchant), p.key, (), raw, way=way)
+
+    def shown(raw: str, merchant: str | None = None, way: str = "to") -> str:
+        return stored(raw, merchant, way)[0]
 
     # Review round 4 (R1): the payee parser's own channels, each with a name after "to", and an app's star.
     to, check, star = rule("Zelle, a wire, bill pay or a numbered check", r"after (.*), such as (.*), or a payment "
@@ -202,9 +205,16 @@ def test_the_rows_that_hide_a_name_are_exactly_the_ones_the_docs_list():
     assert not M._named_elsewhere("COSTCO WHSE #1234", "Costco", payee("COSTCO WHSE #1234", "Costco"))
     assert not M._named_elsewhere("COSTCO WHSE #1234 CREDIT TO CARD", None, payee("COSTCO WHSE #1234 CREDIT TO CARD"))
 
-    # What the miss list says keeps a name does keep it, so the docs promise no more than the code does.
+    # What the miss list says keeps a name does keep it, so the docs promise no more than the code does. Such a row
+    # has nothing at home, so the card offers it no tick (public issue #53, review): the docs say so rather than offer one.
     said = misses()
-    assert "which store rows hide a name" in said and "the name also goes when the manager ticks that row" in said
+    assert "which store rows hide a name" in said
+    assert "these rows have no tick, so a name the model does find in one always goes as [name]" in said
+    assert "the name also goes when the manager ticks that row" not in said
+    assert "in a row the rules do hide, the name goes when the manager ticks that row" in said
+    for raw, merchant in (("PAYWISE PRIYA NAIR", None), ("MOBILE DEPOSIT", "Priya Nair"),
+                          ("ATM WITHDRAWAL #1234 BREA CA", "Priya Nair")):
+        assert stored(raw, merchant)[1] is None, raw
     for case in ("a store that carries its owner's name", "a person paid through an app steward doesn't know",
                  "a person named in review on a deposit or cash row", "uses none of the words listed there"):
         assert case in said, case
@@ -214,6 +224,30 @@ def test_the_rows_that_hide_a_name_are_exactly_the_ones_the_docs_list():
     assert shown("PAYPAL *STEAMGAMES") == "PayPal to [name]"           # the store the rules name as hidden too
     assert '"paypal *steamgames"' in rules
     assert "[" not in shown("HP INSTANT INK")                          # the old example no longer matches
+
+
+def test_the_gateway_masks_a_name_its_model_finds_in_an_unticked_row_as_the_docs_say():
+    """Public issue #53: the docs' example is what the gateway does. A person's name its model tags in a row the manager
+    didn't tick goes as [name]; the same row ticked goes as the manager saw it."""
+    from steward_gateway.checks import mask_store_names
+    from tests.gateway.fakes import NameListDetector
+    content = {"rows": [{"date": "2026-10-18", "amount_cents": -18_500, "category": "home",
+                         "merchant": "John Doe Plumbing", "account": "Account 2"}], "payees": [], "more": False}
+    detectors = [NameListDetector(names=("John Doe",))]
+    assert mask_store_names(content, frozenset(), detectors)["rows"][0]["merchant"] == "[name] Plumbing"
+    assert mask_store_names(content, frozenset({"r0"}), detectors) == content
+    rules = flat(section(PRIVACY, RULES))
+    assert "replaces each person's name its model finds with [name]. a row such as \"john doe plumbing\" can go as " \
+           "\"[name] plumbing\"" in rules
+    assert "a store named after someone for a person and replace that name too" in rules
+    assert "a ticked row goes as the manager saw it" in rules
+    assert "the book's log shows each row as it was sent" in rules
+    # Ask's walk-through and the card say it too (public issue #53, review), so neither promises the rows go as shown.
+    ask = flat((ROOT / "docs/explanations/ask.md").read_text(encoding="utf-8"))
+    assert "in rows the manager didn't tick, your gateway also replaces a person's name its model finds with [name]" \
+        in ask
+    card = flat(chat_copy("CARD_EVERY_ROW"))
+    assert card == "every row as it would go, apart from a person's name your gateway finds", card
 
 
 def test_the_disclosure_says_which_rows_hide_a_name_as_the_docs_do():

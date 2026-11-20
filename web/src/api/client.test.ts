@@ -19,7 +19,7 @@ describe('api()', () => {
   });
 
   it('carries the error body, so a 503 keeps last_saved', async () => {
-    const last = { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00' };
+    const last = { comfortable_age: 63, likely_age: 60, saved_at: '2026-10-12T19:00:00+00:00', saved_day: '2026-10-12' };
     vi.stubGlobal('fetch', vi.fn(async () => ok({ error: "The plan couldn't be worked out right now.", last_saved: last }, 503)));
     const e = await api<never>('/api/plan').catch((x: ApiError) => x);
     expect(e).toBeInstanceOf(ApiError);

@@ -52,7 +52,7 @@ def test_0029_recomputes_patterns_and_merges_the_rules_that_meet(settings, caplo
     with caplog.at_level(logging.INFO, logger="alembic.runtime.migration"):
         run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         merchant = c.execute(text("SELECT id, pattern, category FROM merchant_rule ORDER BY id")).all()
         reimburse = c.execute(text("SELECT id, pattern, reimburser_id FROM reimburse_rule ORDER BY id")).all()
         business = c.execute(text("SELECT id, kind, pattern, account_id, pct FROM business_rule ORDER BY id")).all()

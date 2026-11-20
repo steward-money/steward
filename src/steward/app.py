@@ -18,7 +18,6 @@ from steward.api.hosts import HostCheck
 from steward.api.limits import BodyLimit
 from steward.api.origin import SameOrigin
 from steward.auth import setup_link
-from steward.auth.cookies import MoveSession
 from steward.app_settings import AppSettings, apply_effective
 from steward.auth.passkeys import ChallengeStore
 from steward.auth.devices import DeviceKeys, DeviceLockouts
@@ -132,7 +131,6 @@ def create_app(settings: Settings | None = None, books: BookRegistry | None = No
 
     app = FastAPI(title="Steward", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(BodyLimit)
-    app.add_middleware(MoveSession)     # issue #14: a 0.1.0 session cookie moves on any answer, 204s included
     app.add_middleware(CompressReads)   # phase 18: API reads gzipped when asked
     if gate_on(settings, first_run_gate):       # release spec 2026-11-05, section 6: 503 until someone exists
         app.add_middleware(FirstRun, has_people=lambda: setup_link.has_people_in(books.directory))

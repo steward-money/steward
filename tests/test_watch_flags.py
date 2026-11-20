@@ -9,8 +9,9 @@ from sqlalchemy import select
 from steward.db.models import ChangeRecord, WatchKnown
 from steward.watch.flags import (
     DONE_RULE, HANDLED_NOTE, KNOWN_GONE, NOT_CHECKING, NOTE_RULE, SCOPE_RULE, FlagRefused, change_note,
-    expected_sheet, mark_checking, mark_expected, mark_handled, remove_known, reopen,
+    expected_sheet, flag_payee, mark_checking, mark_expected, mark_handled, remove_known, reopen,
 )
+from steward.watch.payees import Payee
 from steward.watch.run import run_watch
 from steward.watch.store import add_flag
 from tests.watch_helpers import NOW, TODAY, account, flags, history, txn
@@ -73,6 +74,24 @@ def test_the_expected_sheet_for_a_large_amount():
         ("this", "Yes, this one only", "The next payment to Brea Family Dental of $500 or more is flagged again."),
     ]
     assert sheet["fixed"] is None
+
+
+def test_the_flags_payee_is_its_rows_payee_now_and_the_facts_only_without_one(margaret, mdb, mctx):
+    """flag_payee: the payee a later payment gives (public issue #49 moved Wells Fargo's keys); the facts serve when
+    the row is gone, and a flag with no payee key (a numbered check) stays without one."""
+    chk = account(mdb)
+    t = txn(mdb, chk, 2, -64_000, "PURCHASE AUTHORIZED ON 10/17 BREA FAMILY DENTAL BREA CA S382074123456789 CARD 1234")
+    old = {**DENTAL, "payee": "Authorized On", "payee_key": "AUTHORIZED ON"}
+    f = add_flag(mdb, check="large", severity="normal", summary="", title="", facts=old, now=NOW, after="sync",
+                 transaction_id=t.id)
+    assert flag_payee(mdb, f) == Payee("BREA FAMILY DENTAL", "Brea Family Dental", "card")
+    paper = txn(mdb, chk, 1, -64_000, "CHECK 1234", merchant="Brea Family Dental")
+    numbered = add_flag(mdb, check="large", severity="normal", summary="", title="", now=NOW, after="sync",
+                        facts={**DENTAL, "payee": "Check 1234", "payee_key": ""}, transaction_id=paper.id)
+    assert flag_payee(mdb, numbered).key == ""
+    mdb.delete(t)
+    mdb.flush()
+    assert flag_payee(mdb, f) == Payee("AUTHORIZED ON", "Authorized On", "card")
 
 
 def test_refusals(margaret, mdb, mctx):

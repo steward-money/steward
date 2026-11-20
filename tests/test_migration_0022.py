@@ -36,7 +36,7 @@ def test_0022_sorts_investment_rows_nobody_sorted(settings):
                       {"id": tid, "a": aid, "amt": 100 if cat == "uncategorized" and raw.startswith("DIVIDEND") else -100, "raw": raw, "cat": cat, "src": src, "tr": transfer})
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
         got = dict(c.execute(text("SELECT id, category FROM \"transaction\"")).all())
     assert got == {1: "investment", 2: "investment", 3: "interest", 4: "investment", 5: "investment", 6: "investment",
                    7: "gifts", 8: "transfer", 9: "uncategorized"}

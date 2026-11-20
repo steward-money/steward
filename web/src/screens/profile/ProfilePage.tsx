@@ -10,6 +10,7 @@ import { nextLine } from '../../lib/lines';
 import { momentAllowed } from '../../lib/momentAllowed';
 import { SECTION_NAME, SECTION_STEPS, isFinished, sectionPath, type SectionKey } from '../../lib/profileSections';
 import { Button } from '../../ui/Button';
+import { Shown, useArriving } from '../../ui/Live';
 import { Notice } from '../../ui/Notice';
 import { failure } from '../settings/shared';
 import {
@@ -68,6 +69,9 @@ export function ProfilePage({ profile }: { profile: ProfileState }) {
   const [cheer] = useState(() => (came?.allDone ? CHEER_ALL : came?.finished === 'kids' ? CHEER_KIDS : came?.finished === 'home' ? CHEER_HOME : null));
   const [doneLine] = useState(() => nextLine('profileDone'));
   const full = profile.done === profile.total && momentAllowed('profileDone', { parent: false }).line;
+  // Review of #51: the done line is quiet when the page opens on a profile that was already full, and said when it
+  // fills while the page is open. The cheer is what the person just did, so it is always said.
+  const arriving = useArriving();
   const meter = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLOListElement>(null);
   useEffect(() => {
@@ -111,8 +115,8 @@ export function ProfilePage({ profile }: { profile: ProfileState }) {
         {full && <Check className="prof-meter__check" size={20} aria-hidden="true" data-testid="profile-check" />}
         <span className="prof-meter__text">{METER.replace('{n}', String(profile.done))}</span>
       </div>
-      {cheer ? <p className="prof-cheer" role="status">{cheer}</p>
-        : full && <p className="prof-cheer" role="status" data-testid="profile-done">{doneLine}</p>}
+      {cheer ? <Shown className="prof-cheer">{cheer}</Shown>
+        : full && <Shown className="prof-cheer" data-testid="profile-done" quietOnMount={arriving}>{doneLine}</Shown>}
       <ol className="card prof-rows" ref={rows}>
         {profile.sections.map((s) => <Row key={s.key} s={s} profile={profile} canEdit={canEdit} />)}
       </ol>

@@ -281,7 +281,7 @@ def test_start_up_hands_the_check_each_household_books_revision_from_before_the_
     monkeypatch.setattr("steward.services.same_account.apart.check_once",
                         lambda engine, was, now: seen.append(was) or 0)
     books.upgrade_all()
-    assert seen == ["0037"]                                 # ours, already at the head
+    assert seen == ["0038"]                                 # ours, already at the head
 
 
 def test_questions_are_found_by_their_ids_only_while_open(db):

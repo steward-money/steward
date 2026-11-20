@@ -11,6 +11,7 @@ import { TRY_AGAIN } from '../../lib/copy';
 import { dollars, localYmd } from '../../lib/format';
 import { setQueryDataIfStillIn } from '../../queryClient';
 import { Button } from '../../ui/Button';
+import { Shown } from '../../ui/Live';
 import { MoneyInput } from '../../ui/MoneyInput';
 import { Notice } from '../../ui/Notice';
 import { Skeleton } from '../../ui/Skeleton';
@@ -224,7 +225,7 @@ function TargetsForm({ t, canEdit }: { t: SpendingTargets; canEdit: boolean }) {
                 </div>
               </div>
             )}
-            {canEdit && !pending && saved && <p className="small" role="status">{C.SAVED}</p>}
+            {canEdit && !pending && saved && <Shown className="small">{C.SAVED}</Shown>}
           </section>
         </div>
       </div>

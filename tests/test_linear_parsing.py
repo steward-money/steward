@@ -102,9 +102,11 @@ LISTED.update({("src/steward/watch/payees.py", "dynamic", source): "built from w
     "to['end']",
     "f'(?<![A-Z0-9])({_either((a.upper() for a in apps))})\\\\s*\\\\*\\\\s*(?P<name>[^\\\\s*]+)'",
     "m['pattern']",
+    "f'(?:{_either(authorized)})(?: \\\\$ ?\\\\d+(?:\\\\.\\\\d{{2}})?)?(?: RETURN)? AUTHORIZED ON"
+    "(?: \\\\d{{1,2}}/\\\\d{{1,2}}(?:/\\\\d{{2,4}})?)?(?= |$)'",
 )})
 # The Words fields payees.py calls only `.match` on, so each starts at one place.
-WATCH_ONE_START = ("name", "end")
+WATCH_ONE_START = ("name", "end", "authorized")
 # watch.json's old recipient pattern, one lazy name per "TO": kept here only to prove the scan names it and that
 # payees._recipient finds the same name on short descriptions.
 _OLD_RECIPIENT = r"\bTO\s+(?P<name>[A-Z][A-Z .,'&-]*?)(?=\s+(?:ON|CONF|REF|ID|MEMO|FOR)\b|\s*#|\s+\S*\d|$)"
@@ -176,7 +178,8 @@ def test_the_watch_patterns_take_time_in_step():
     risky = [f"{name}: {sorted(found)} {rx.pattern!r}" for name, rx in _watch_patterns()
              if (found := shapes(rx.pattern, rx.flags, one_start=name in WATCH_ONE_START))]
     assert not risky, "a watch.json pattern whose time can grow faster than its input:\n" + "\n".join(risky)
-    assert {name for name, _ in _watch_patterns()} >= {"methods", "to", "name", "end", "app", "cash", "drop", "scam"}
+    assert {name for name, _ in _watch_patterns()} >= {"methods", "to", "name", "end", "app", "cash", "drop", "scam",
+                                                         "authorized"}
 
 
 def test_the_one_start_watch_patterns_are_only_matched():

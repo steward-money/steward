@@ -9,6 +9,7 @@ import { Acorn } from '../../ui/Acorn';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import { ChecklistRow } from '../../ui/ChecklistRow';
+import { Shown } from '../../ui/Live';
 import { Notice } from '../../ui/Notice';
 import { Sheet } from '../../ui/Sheet';
 import { Skeleton } from '../../ui/Skeleton';
@@ -43,10 +44,10 @@ function ExtraRow({ id, title, line, go, done, status, onClick, expanded, childr
   return (
     <div className="welcome__row">
       <ChecklistRow testId="extras-row" done={done} title={title} detail={line} go={go} status={status} onClick={onClick} expanded={expanded} />
-      <div role="status" className="welcome__said">
+      <Shown as="div" className="welcome__said">
         {played && <Acorn ref={ref} face="win" size={24} />}
         {said && <p data-testid="step-line">{said}</p>}
-      </div>
+      </Shown>
       {children}
     </div>
   );
@@ -116,13 +117,13 @@ export function Extras({ again, go }: { again: boolean; go: (to: 'planted') => v
         {sorted.played && <Acorn ref={sorted.ref} face="win" size={48} className="welcome__acorn" />}
         <h1 id="welcome-extras-h" className="welcome__title">{C.EXTRAS_TITLE}</h1>
       </div>
-      <div role="status" className="welcome__said">{sorted.line && <p data-testid="step-line">{sorted.line}</p>}</div>
+      <Shown as="div" className="welcome__said">{sorted.line && <p data-testid="step-line">{sorted.line}</p>}</Shown>
       <p className="welcome__lede">{C.EXTRAS_LEDE}</p>
       {!loaded ? (ready.isError ? <Notice tone="error">{ready.error.message}</Notice> : <Skeleton lines={4} />) : (
         <div className="card setup welcome__rows">
           <ExtraRow id="partner" title={C.PARTNER} line={C.PARTNER_LINE} go={C.INVITE} done={others}
             status={others ? STATUS_WORD.done : STATUS_WORD.optional} expanded={false} onClick={() => { setInviteLine(''); setOpen('partner'); }} />
-          {inviteLine && <p role="status" className="small muted welcome__invite-line">{inviteLine}</p>}
+          {inviteLine && <Shown className="small muted welcome__invite-line">{inviteLine}</Shown>}
           {extra('ask', C.ASK, C.ASK_LINE, C.SET_UP_ROW)}
           {extra('email', C.EMAIL, C.EMAIL_LINE, C.SET_UP_ROW)}
           {extra('backups', C.BACKUPS, backups, C.CHECK)}
@@ -131,7 +132,7 @@ export function Extras({ again, go }: { again: boolean; go: (to: 'planted') => v
       <Card className="welcome__card" data-testid="help-card">
         <h2 className="subhead">{C.HELP_CARD_TITLE}</h2>
         <p className="muted">{C.HELP_CARD_LINE}</p>
-        {added.map((name) => <p key={name} role="status">{C.inYourBooks(name)}</p>)}
+        {added.map((name) => <Shown key={name}>{C.inYourBooks(name)}</Shown>)}
         <Button variant="quiet" onClick={() => setAdding(true)}>{C.ADD_THEIR_BOOK}</Button>
       </Card>
       <div className="welcome__foot">

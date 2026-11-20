@@ -60,7 +60,7 @@ def test_revoke_other_device(client, ddb):
     sessions = client.get("/api/auth/sessions").json()["sessions"]
     sid_a = next(s["id"] for s in sessions if s["device_label"] == "A")
     assert client.delete(f"/api/auth/sessions/{sid_a}").status_code == 204
-    client.cookies.set(HOST_SESSION, tok_a)
+    client.cookies.set(HOST_SESSION, tok_a, domain="nas.tail1234.ts.net")    # in place of B
     assert client.get("/api/auth/me").status_code == 401
 
 
@@ -90,7 +90,7 @@ def test_cannot_revoke_another_users_session(client, ddb):
     client.cookies.clear()
     _login(client, "bo", "B")
     assert client.delete(f"/api/auth/sessions/{sid_a}").status_code == 404
-    client.cookies.set(HOST_SESSION, tok_a)
+    client.cookies.set(HOST_SESSION, tok_a, domain="nas.tail1234.ts.net")    # in place of bo's
     assert client.get("/api/auth/me").status_code == 200
 
 
@@ -108,7 +108,7 @@ def test_expired_sessions(client, ddb):
     assert client.get("/api/auth/me").status_code == 401
     assert not sessions.revoke(ddb, sid, u.id, t)
     token2, s2 = sessions.create_session(ddb, u, "y", t, 30)
-    client.cookies.set(HOST_SESSION, token2)
+    client.cookies.set(HOST_SESSION, token2, domain="nas.tail1234.ts.net")
     s2.expires_at = t - timedelta(seconds=1)
     ddb.commit()
     assert client.get("/api/auth/sessions").status_code == 401
@@ -198,64 +198,36 @@ def test_on_a_plain_http_install_the_session_cookie_keeps_its_name(settings, boo
     monkeypatch.setenv("STEWARD_BASE_URL", "http://localhost:8420")
     with TestClient(create_app(Settings(_env_file=None), books), base_url="http://localhost:8420") as c:
         cookie, = (v for v in _set_cookies(_login(c)) if "steward_session" in v)
+        # A browser on localhost sends a Secure cookie back over http; httpx doesn't, so it goes in by hand here.
+        c.cookies.clear()
+        c.cookies.set(SESSION, cookie.split(";")[0].split("=", 1)[1])
+        assert c.get("/api/auth/me").status_code == 200      # read back under the plain name (0.1.2 review)
     assert cookie.startswith(f"{SESSION}=")
 
 
-def test_a_session_cookie_from_0_1_0_still_signs_in_and_moves_to_the_new_name(client, ddb):
-    """Renaming the cookie mustn't sign anyone out: the old name works for this release, and an answer moves it."""
+def test_a_0_1_0_session_cookie_no_longer_signs_in_on_an_https_install(client, ddb):
+    """0.1.1 still signed in with 0.1.0's plain cookie name and moved it; from 0.1.2 it signs no one in, so a
+    plain-named cookie another host on the domain plants is worth nothing (issue #14 review)."""
     u = _mk(ddb)
     token, _ = sessions.create_session(ddb, u, "old phone", clock.now(), 30)
-    client.cookies.set(SESSION, token, domain="nas.tail1234.ts.net")    # as the browser keeps it
+    client.cookies.set(SESSION, token, domain="nas.tail1234.ts.net")    # as the browser kept it
     r = client.get("/api/auth/me")
-    assert r.status_code == 200 and r.json()["session"]["device_label"] == "old phone"
-    moved = _set_cookies(r)
-    assert any(v.startswith(f"{HOST_SESSION}={token};") and "secure" in v.lower() for v in moved)
-    assert any(v.startswith(f"{SESSION}=") and "max-age=0" in v.lower() for v in moved)
-    assert client.cookies.get(SESSION) is None and client.cookies.get(HOST_SESSION) == token
-    assert client.get("/api/auth/me").status_code == 200
+    assert r.status_code == 401
+    assert not any(v.startswith(f"{HOST_SESSION}={token};") for v in _set_cookies(r))
 
 
-def test_a_0_1_0_cookie_moves_on_an_answer_the_route_builds_itself(client, ddb):
-    """Argon review: the move was written on FastAPI's injected response, which a route that returns its own Response
-    (every 204 here) drops. A layer adds it to whatever answer goes out now."""
-    u = _mk(ddb)
-    token, _ = sessions.create_session(ddb, u, "old phone", clock.now(), 30)
-    _, other = sessions.create_session(ddb, u, "tablet", clock.now(), 30)
-    client.cookies.set(SESSION, token, domain="nas.tail1234.ts.net")
-    r = client.delete(f"/api/auth/sessions/{other.id}")
-    assert r.status_code == 204
-    moved = _set_cookies(r)
-    assert sum(v.startswith(f"{HOST_SESSION}={token};") for v in moved) == 1
-    assert any(v.startswith(f"{SESSION}=") and "max-age=0" in v.lower() for v in moved)
-    assert client.cookies.get(SESSION) is None and client.cookies.get(HOST_SESSION) == token
-    r = client.get("/api/auth/me")
-    assert r.status_code == 200 and not _set_cookies(r)                # moved once, not on every answer
-
-
-def test_signing_out_this_device_with_a_0_1_0_cookie_hands_back_no_revoked_token(client, ddb):
-    """Review of the move: revoking the session the request came with must not move its now-dead token to the new
-    name; both names are cleared instead."""
-    u = _mk(ddb)
-    token, mine = sessions.create_session(ddb, u, "old phone", clock.now(), 30)
-    client.cookies.set(SESSION, token, domain="nas.tail1234.ts.net")
-    r = client.delete(f"/api/auth/sessions/{mine.id}")
-    assert r.status_code == 204
-    cleared = _set_cookies(r)
-    assert not any(v.startswith(f"{HOST_SESSION}={token};") for v in cleared)
-    assert any(v.startswith(f"{HOST_SESSION}=") and "max-age=0" in v.lower() for v in cleared)
-    assert any(v.startswith(f"{SESSION}=") and "max-age=0" in v.lower() for v in cleared)
+def test_signing_out_this_device_clears_a_left_over_plain_cookie_too(client, ddb):
+    _mk(ddb)
+    _login(client)
+    client.cookies.set(SESSION, "left-over", domain="nas.tail1234.ts.net")
+    mine, = client.get("/api/auth/sessions").json()["sessions"]     # the one sign-in above
+    cleared = _set_cookies(client.delete(f"/api/auth/sessions/{mine['id']}"))
+    for name in (HOST_SESSION, SESSION):
+        assert any(v.startswith(f"{name}=") and "max-age=0" in v.lower() for v in cleared), name
     assert client.get("/api/auth/me").status_code == 401
 
 
-def test_a_0_1_0_cookie_moves_once_on_an_answer_with_a_body(client, ddb):
-    u = _mk(ddb)
-    token, _ = sessions.create_session(ddb, u, "old phone", clock.now(), 30)
-    client.cookies.set(SESSION, token, domain="nas.tail1234.ts.net")
-    moved = _set_cookies(client.get("/api/auth/sessions"))
-    assert sum(v.startswith(f"{HOST_SESSION}=") for v in moved) == 1 and sum(v.startswith(f"{SESSION}=") for v in moved) == 1
-
-
-def test_a_0_1_0_cookie_beside_a_new_one_is_never_moved(client, ddb):
+def test_a_plain_cookie_beside_a_host_one_is_ignored(client, ddb):
     """A plain-named cookie another host on the domain planted can't replace a __Host- session that is already there,
     good or not."""
     u = _mk(ddb)
@@ -264,24 +236,6 @@ def test_a_0_1_0_cookie_beside_a_new_one_is_never_moved(client, ddb):
     client.cookies.set(SESSION, planted, domain="nas.tail1234.ts.net")
     r = client.get("/api/auth/me")
     assert r.status_code == 401 and not _set_cookies(r)
-
-
-def test_the_0_1_0_session_cookie_name_is_read_for_one_release_only():
-    """Issue #14 review: while an https install still reads the plain name, another host on the domain can plant it on
-    someone signed out. The plan keeps it for 0.1.1 only; this fails from 0.1.2 on until the fallback goes."""
-    import re
-    from types import SimpleNamespace
-
-    from steward import __version__
-    from steward.auth import cookies
-    request = SimpleNamespace(cookies={SESSION: "old"},
-                              app=SimpleNamespace(state=SimpleNamespace(settings=SimpleNamespace(
-                                  base_url="https://nas.tail1234.ts.net"))))
-    version = tuple(int(n) for n in re.match(r"(\d+)\.(\d+)\.(\d+)", __version__).groups())
-    if version >= (0, 1, 2):
-        assert cookies.read_session(request) == (None, None), "remove 0.1.0's session cookie name from cookies.py"
-    else:
-        assert cookies.read_session(request) == ("old", SESSION)
 
 
 def test_signing_out_clears_both_names(client, ddb):

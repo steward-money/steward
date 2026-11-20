@@ -8,6 +8,7 @@ import { composing } from '../lib/ime';
 import { menuPlace, type MenuPlace } from '../lib/menuPlace';
 import { anchoredStyle, anchorName, canAnchor, canPopover, invokerAttrs, usePopoverOpen } from '../lib/popover';
 import { useWide } from '../lib/useWide';
+import { Shown } from './Live';
 import { Sheet } from './Sheet';
 import './CategoryMenu.css';
 
@@ -147,7 +148,7 @@ export function CategoryMenu({ anchor, value, title = CATEGORY, withUnsorted = f
           onChange={(e) => { moved.current = true; setQ(e.target.value); setActive(0); }} onKeyDown={onKey} />
       </label>
       {flat.length === 0 ? (
-        <p className="catmenu__empty" role="status">{NO_CATEGORY_MATCH.replace('{q}', q.trim())}</p>
+        <Shown className="catmenu__empty">{NO_CATEGORY_MATCH.replace('{q}', q.trim())}</Shown>
       ) : (
         <div id={listId} role="listbox" aria-label={title} className={`catmenu__list${q.trim() ? '' : ' catmenu__list--grouped'}`}>
           {sections.map((s) => (s.name === null ? s.keys.map((k) => option(s, k)) : (

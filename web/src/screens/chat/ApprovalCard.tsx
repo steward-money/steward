@@ -1,9 +1,10 @@
 // The store-names card (spec 4.4; JR decisions 2 and 6). A manager sees why Claude asks, the names that would go with
-// how many rows each appears in, every row exactly as it would go and which real account each alias is; then
+// how many rows each appears in, every row as it would go and which real account each alias is; then
 // "Approve for this conversation" (approved rows go with its later questions) or "Don't send". A viewer's card has no buttons.
 // A row whose bank line reads as Zelle, a wire, a transfer or a payment app goes as "Zelle to [name]" or "Transfer from
 // [name]"; the row's "Send this name too" box, which shows the name, swaps it in (public issue #1). The rows and the names
-// above them always show what would go.
+// above them show what would go, except that after the OK the gateway replaces a person's name its model finds in a row
+// the manager didn't tick with "[name]" (public issue #53).
 import { Check, Store, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { label as categoryLabel } from '../../lib/categories';

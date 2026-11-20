@@ -2,6 +2,7 @@ import { Calculator, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { monthLabel } from '../../../lib/format';
 import { Field, FormError } from '../../../ui/Field';
+import { Shown, useArriving } from '../../../ui/Live';
 import { failure } from '../../settings/shared';
 import { liveCalc, ym } from '../home';
 import { payoffYmd, thisMonth } from '../payoff';
@@ -15,6 +16,9 @@ import type { Offer } from './offer';
 /** The payoff date follows the calculation, but only once the person has touched the rate, the payment or the date. */
 export function Payoff({ owedCents, rate, payment, saved, offer }: { owedCents: number | null; rate: string; payment: string; saved: string | null; offer: Offer }) {
   const { register, canEdit } = useFieldMode();
+  // Review of #51: the readout shows the saved loan, so it is quiet when the step opens; a change is said, and so is
+  // the readout coming back after Use the calculated date.
+  const arriving = useArriving();
   const from = useMemo(() => thisMonth(), []);
   const calc = liveCalc(owedCents, rate, payment, from);
   const calcYm = calc?.kind === 'months' ? ym(calc) : calc?.kind === 'paid_off' ? ym(from) : null;
@@ -46,10 +50,10 @@ export function Payoff({ owedCents, rate, payment, saved, offer }: { owedCents: 
   const how = calc?.kind === 'months' ? (calc.payments === 1 ? CALC_HOW_ONE : CALC_HOW.replace('{n}', String(calc.payments))) : null;
   if (overriding && !canEdit) {      // a viewer reads the date that was entered, with no way to change it
     return (
-      <div className="calc" role="status" data-testid="payoff">
+      <Shown as="div" className="calc" data-testid="payoff" quietOnMount={arriving}>
         <span className="calc__label"><Calculator className="i" size={20} aria-hidden="true" />{PAID_OFF_BY}</span>
         <span className="calc__value">{saved ? monthLabel(saved) : ''}</span>
-      </div>
+      </Shown>
     );
   }
   if (overriding) {
@@ -62,7 +66,7 @@ export function Payoff({ owedCents, rate, payment, saved, offer }: { owedCents: 
     );
   }
   return (
-    <div className="calc" role="status" data-testid="payoff">
+    <Shown as="div" className="calc" data-testid="payoff" quietOnMount={arriving}>
       <span className="calc__label"><Calculator className="i" size={20} aria-hidden="true" />{PAID_OFF_BY}</span>
       {calc === null ? <span className="calc__how">{CALC_WAITING}</span>
         : calc.kind === 'never' ? <span className="calc__how warn">{NEVER_PAID}</span>
@@ -74,6 +78,6 @@ export function Payoff({ owedCents, rate, payment, saved, offer }: { owedCents: 
         </button>
       )}
       {error && <FormError>{error}</FormError>}
-    </div>
+    </Shown>
   );
 }

@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FOLDERS = ("docs/quickstart", "docs/guides", "docs/reference", "docs/explanations")
+FOLDERS = ("docs/quickstart", "docs/guides", "docs/reference", "docs/explanations", "docs/releases")
 FIXED = ("README.md", "SECURITY.md", "CONTRIBUTING.md", "docs/README.md", "docs/CLAIMS.md")
 
 # Pages a later task writes. A link to one may dangle until then; one that exists must come off this list
@@ -21,7 +21,7 @@ ANCHOR = re.compile(r"<a id=\"([^\"]+)\"")
 
 def public_docs(root: Path = ROOT) -> list[Path]:
     """README.md, SECURITY.md, CONTRIBUTING.md, docs/README.md and docs/CLAIMS.md where they exist, every .md in the
-    four folders, and the public review summaries (docs/reviews/0.1.0-*.md, not the -full reports)."""
+    five folders (the release notes among them), and the public review summaries (docs/reviews/0.1.0-*.md, not the -full reports)."""
     found = [root / name for name in FIXED if (root / name).is_file()]
     for folder in FOLDERS:
         found += (root / folder).glob("*.md")

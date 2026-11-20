@@ -23,7 +23,7 @@ from steward.advisor.about import AboutGone, AboutIn, AboutRefused, resolve
 from steward.advisor.aliases import Aliases, display
 from steward.advisor.gateway import GatewayUnavailable
 from steward.advisor.identifiers import load_identifiers
-from steward.advisor.outgoing import record_parts, record_payload
+from steward.advisor.outgoing import Approval, record_parts, record_payload
 from steward.advisor.redact import Refused, exact_redact, issued_now, turn_hash_sets
 from steward.advisor.state import OFF_LINE, budget_lines, chat_on, money
 from steward.advisor.tools import run_call, run_calls
@@ -145,8 +145,8 @@ class Prepared:
     sent: str | None = None                       # the question as the gateway redacted it
     steps: list[str] = field(default_factory=list)
     started: float = 0.0
-    # call id → (the manager who approved its store rows, the SHA-256 of exactly the content they approved)
-    approved: dict[str, tuple[int, str]] = field(default_factory=dict)
+    # call id → the manager who approved its store rows, exactly the content sent with the OK, and their ticks
+    approved: dict[str, Approval] = field(default_factory=dict)
     gateway_done: dict | None = None              # the gateway's done after a cancel, when the browser went away
 
 
@@ -614,7 +614,8 @@ def _card(env: AskEnv, call: dict, content: dict, home: dict[str, str]) -> dict:
 
 def card_digest(turn_id: str, call_id: str, content: dict, home: dict[str, str]) -> str:
     """The hash an approval must carry (Task 6.5): this turn, this call, and exactly the rows and names on the card,
-    which are byte for byte what would be sent, and the names a tick could send instead (public issue #1)."""
+    which are what the NAS would send, and the names a tick could send instead (public issue #1). The gateway may still
+    replace a person's name its model finds in an unticked row with [name] (public issue #53)."""
     return sha256_hex({"turn_id": turn_id, "call_id": call_id, "content": content, "home": home})
 
 
@@ -660,8 +661,11 @@ def _merchant(env: AskEnv, prep: Prepared, call: dict) -> Iterator[dict]:
                             "line": NOT_MEMBER if reason == "not_a_member" else OFF_LINE}
         if member_role(env.directory, env.book.id, env.user_id) != "manager":     # a manager at the moment of the OK
             return (yield from _viewer(env, prep, call))
-        result = {**result, "content": with_ticked(result["content"], home, env.control.ticked(prep.turn_id))}
-        prep.approved[call["id"]] = (env.user_id, sha256_hex(result["content"]))
+        # Only ticks the card offered count. They go beside the content, never in it, so the gateway leaves those rows
+        # as they are and may mask a person's name its model finds in the rest (public issue #53).
+        ticked = sorted(env.control.ticked(prep.turn_id) & home.keys())
+        result = {**result, "content": with_ticked(result["content"], home, frozenset(ticked)), "ticked": ticked}
+        prep.approved[call["id"]] = Approval(env.user_id, result["content"], frozenset(ticked))
         update_turn(env, prep.turn_id, approval="approved", store_rows=card["count"], approved_by=env.user_id)
         name = next((p.display_name for p in env.people() if p.id == env.user_id), "You")
         yield {"type": "approval", "state": "approved", "log_key": None,

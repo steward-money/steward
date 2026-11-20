@@ -13,13 +13,12 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
-from steward import clock
 from steward.engine import Levers
 from steward.engine.decisions import Conversion, conversion_room, retirement_choice
 from steward.engine.project import Assumptions, Expense, Income, ProjectionInputs, project
 from steward.engine.social_security import benefit_schedule, trust_fund_factor
 from steward.engine.tax import annual_tax, rules
-from steward.services.plan import latest_plan, saved_state
+from steward.services.plan import latest_plan, saved_on, saved_state
 from steward.services.plan_inputs import PlanInputs, SetupIncomplete, build_inputs
 from steward.taxes.household import household_tax
 from steward.taxes.quarterly import NEVER, rules_note
@@ -94,8 +93,9 @@ def later_rate(pi: PlanInputs, levers: Levers, retire_age: int, source: str, a: 
 
 
 def saved_label(at: datetime, today: date) -> str:
-    """"Oct 7", or "Dec 30, 2025" from another year: the household's day, as the web writes a saved plan's date."""
-    d = at.astimezone(clock.household_tz()).date()
+    """"Oct 7", or "Dec 30, 2025" from another year: the household's day of the save (services.plan.saved_on, #52),
+    the day Home and Plan name it by too."""
+    d = saved_on(at)
     return f"{d:%b} {d.day}" if d.year == today.year else f"{d:%b} {d.day}, {d.year}"
 
 

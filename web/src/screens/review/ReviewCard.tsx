@@ -14,6 +14,7 @@ import { UNDONE_MS, useHoldableTimer } from '../../lib/useHoldableTimer';
 import { AskAbout } from '../../ui/AskAbout';
 import { Button } from '../../ui/Button';
 import { CategoryMenu } from '../../ui/CategoryMenu';
+import { Shown } from '../../ui/Live';
 import { Money } from '../../ui/Money';
 import { Notice } from '../../ui/Notice';
 import { Rich } from '../../ui/Rich';
@@ -105,7 +106,7 @@ function ReviewCardView({ txn, chips, today, onBegin, onDone, onFail, onNote, ba
       </div>
       {!selecting && (
         <div className="rcard__body">
-          {undone !== null && <p className="rcard__undone" role="status">{UNDONE}</p>}
+          {undone !== null && <Shown className="rcard__undone">{UNDONE}</Shown>}
           {a.matching !== null && (a.matching > 0 ? (
             <label className="check-row rcard__also">
               <input type="checkbox" checked={a.also} disabled={locked} onChange={(e) => { a.setAlso(e.target.checked); }} />
@@ -157,7 +158,7 @@ function ReviewCardView({ txn, chips, today, onBegin, onDone, onFail, onNote, ba
               <AskAbout about={aboutFor.transaction(txn)} surface={{ kind: 'transaction', category: txn.category }} thing={txnLabel(txn)} />
             </div>
           </div>
-          {a.either && <p className="rcard__either muted" role="status">{EITHER_LINE}</p>}
+          {a.either && <Shown className="rcard__either muted">{EITHER_LINE}</Shown>}
           {a.asking && (
             <Suspense fallback={null}>
               <PayerInline payers={a.payers} value={a.payerId} onChoose={a.choosePayer} />

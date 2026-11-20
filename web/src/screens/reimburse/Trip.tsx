@@ -108,7 +108,7 @@ export function TripPage() {
       </header>
       {said && (
         <Notice>
-          <div className="rb-said" role="status">
+          <div className="rb-said">
             <p><Rich parts={said.parts} /></p>
             {said.undo && <Button variant="quiet" busy={busy} onClick={() => { void undo(); }}>{UNDO}</Button>}
           </div>

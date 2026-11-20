@@ -7,11 +7,11 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from steward.db.models import Flag, WatchKnown
+from steward.db.models import Flag, Transaction, WatchKnown
 from steward.inventory.changes import record
 from steward.inventory.present import mask_numbers, short_usd
 from steward.watch import vocab as V
-from steward.watch.payees import Payee, known_label
+from steward.watch.payees import Payee, known_label, payee
 from steward.watch.store import facts_of
 
 NO_SUCH_FLAG = "No such flag."
@@ -54,10 +54,25 @@ def silenceable(f: Flag) -> bool:
     return f.check in V.SILENCED and bool(facts_of(f).get("payee_key"))
 
 
-def expected_sheet(f: Flag, large_cents: int) -> dict:
-    """What the Mark Expected sheet offers (README screen 4; decision 1; ruling 8)."""
+def flag_payee(db: Session, f: Flag, facts: dict | None = None) -> Payee:
+    """Who the flag is about, read from its transaction as it is now: the payee a later payment to them gives, which
+    is what a Known payee must hold to cover it. The facts keep the payee as payee() read it when the flag was raised.
+    That goes stale when the parser changes (public issue #49 turned "AUTHORIZED ON" into each store's own key) or
+    when the row is named in Review since, so the facts serve only when the transaction is gone or has no payee."""
+    facts = facts_of(f) if facts is None else facts
+    kept = Payee(facts.get("payee_key") or "", facts.get("payee") or "", facts.get("method", "card"))
+    if not kept.key or f.transaction_id is None:
+        return kept      # no payee to compare (a numbered check, ruling 14), or not a payment's flag
+    t = db.get(Transaction, f.transaction_id)
+    now = payee(t.raw_description, t.merchant) if t is not None else None
+    return now if now is not None and now.key else kept
+
+
+def expected_sheet(f: Flag, large_cents: int, p: Payee | None = None) -> dict:
+    """What the Mark Expected sheet offers (README screen 4; decision 1; ruling 8). `p` is flag_payee(), the payee
+    a Known entry would hold; without it, the one in the flag's facts."""
     facts = facts_of(f)
-    name = mask_numbers(facts.get("payee", ""))
+    name = mask_numbers(p.name if p is not None else facts.get("payee", ""))
     if not silenceable(f):
         help_ = ("Nothing wrong. The flag moves to Done. Payments like this are still flagged." if f.check == "scam"
                  else "Nothing wrong. The flag moves to Done.")
@@ -118,7 +133,7 @@ def mark_expected(db: Session, ctx, f: Flag, body: dict, now: datetime) -> dict:
     known = None
     if scope != "this":
         facts = facts_of(f)
-        p = Payee(facts["payee_key"], facts["payee"], facts.get("method", "card"))
+        p = flag_payee(db, f, facts)
         low, high = band(facts["amount_cents"]) if scope == "about" else (None, None)
         k = WatchKnown(payee_key=p.key, payee_name=known_label(p), low_cents=low, high_cents=high, check=f.check,
                        flag_id=f.id, added_at=now, added_by=ctx.user_id, note=note)

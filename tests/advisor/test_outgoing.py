@@ -1,8 +1,10 @@
+import json
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from steward.advisor.outgoing import RecordRefused, export, record_parts, record_payload, request_detail, requests_page
+from steward.advisor.outgoing import (Approval, RecordRefused, export, record_parts, record_payload, request_detail,
+                                      requests_page)
 from steward_boundary.canonical import canonical, sha256_hex
 from tests.factories import make_user
 
@@ -49,6 +51,50 @@ def test_a_part_that_doesnt_match_its_hash_is_refused(db):
                      parts=[{**part("question", {"text": "x"}), "part": "anything"}], now=NOW)
 
 
+APPROVED = {"rows": [{"date": "2026-10-18", "amount_cents": -1599, "category": "subscriptions",
+                      "merchant": "Tom Becker Plumbing", "account": "Account 2"},
+                     {"date": "2026-10-19", "amount_cents": -2500, "category": "gifts",
+                      "merchant": "Zelle to Priya Nair", "account": "Account 2"}],
+            "payees": [{"payee": "Payee 1", "name": "Dr. Alvarez"}], "more": False}
+
+
+def changed(path: str, value):
+    out = json.loads(json.dumps(APPROVED))
+    key, i, field = path.split(".")
+    out[key][int(i)][field] = value
+    return out
+
+
+@pytest.mark.parametrize("content", [
+    APPROVED,
+    changed("rows.0.merchant", "[name] Plumbing"),
+    changed("rows.0.merchant", "[name]"),
+    changed("payees.0.name", "[name]"),
+])
+def test_rows_are_as_approved_byte_for_byte_or_with_an_unticked_name_masked(content):
+    from steward.advisor.outgoing import as_approved
+    assert as_approved(content, Approval(1, APPROVED, frozenset({"r1"})))
+
+
+@pytest.mark.parametrize("content", [
+    changed("rows.1.merchant", "Zelle to [name]"),          # ticked: exactly as approved
+    changed("rows.0.merchant", "[name] Plumbing Co"),        # text put in
+    changed("rows.0.amount_cents", -1),                     # any other field
+    changed("rows.0.account", "[name]"),
+    changed("payees.0.payee", "[name]"),
+    {**APPROVED, "rows": APPROVED["rows"][:1]},             # a row dropped
+    {**APPROVED, "rows": APPROVED["rows"] + APPROVED["rows"][:1]},
+    {**APPROVED, "more": True},
+    {**APPROVED, "ticked": ["r0"]},                          # a key added
+    {**APPROVED, "rows": "Tom Becker Plumbing"},
+    {**APPROVED, "rows": [None, APPROVED["rows"][1]]},
+    None,
+])
+def test_anything_else_is_not_as_approved(content):
+    from steward.advisor.outgoing import as_approved
+    assert not as_approved(content, Approval(1, APPROVED, frozenset({"r1"})))
+
+
 def test_store_rows_name_who_approved_them_and_questions_count_their_replaced_parts(db, books):
     from steward.db.models import ChatConversation, ChatTurn
     jr = make_user(db)
@@ -64,7 +110,7 @@ def test_store_rows_name_who_approved_them_and_questions_count_their_replaced_pa
     record_parts(db, user_id=jr.id, conversation_id=conv.id, turn_id="t_000000000000000c", seq=2, channel="chat", model=None,
                  parts=[part("merchant_rows", {"tool_use_id": "toolu_m", "name": "merchant_detail", "is_error": False,
                                                "content": rows})], now=NOW,
-                 approved={"toolu_m": (jr.id, sha256_hex(rows))})
+                 approved={"toolu_m": Approval(jr.id, rows)})
     db.commit()
     page = requests_page(db, books.directory, offset=0, today=date(2026, 10, 20))
     assert [r["what"] for r in page["requests"]] == ["9 store rows, approved by JR", "Question, with 1 part replaced"]

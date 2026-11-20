@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { currentBook } from '../../api/book';
 import { nextLine } from '../../lib/lines';
 import { momentAllowed } from '../../lib/momentAllowed';
+import { Shown } from '../../ui/Live';
 
 // Phase 17 spec 3.7, ruling R2: the checklist page goes the moment it is complete (the overview replaces it), so the
 // Setup page leaves a note on this device, per book, and the first overview after says it, once. One count-free line,
@@ -25,5 +26,5 @@ export function PlanReadyLine() {
   const [line] = useState(() => (done ? nextLine('planChecklistDone') : null));
   useEffect(() => { if (done) forgetSetupDone(); }, [done]);
   if (!line || !momentAllowed('planDone', { parent: false }).line) return null;
-  return <p className="plan-ready" role="status" data-testid="plan-ready"><Check className="i" size={20} aria-hidden="true" />{line}</p>;
+  return <Shown className="plan-ready" data-testid="plan-ready"><Check className="i" size={20} aria-hidden="true" />{line}</Shown>;
 }

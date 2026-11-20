@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFakeTimers } from '../../../test-clock';
 import { callsTo, reply, stubFetch, unbook, type Route } from '../../../test-utils';
-import { ME, atProfile, profileState } from '../fixtures';
+import { ME, atProfile, atProfileLive, profileState } from '../fixtures';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 beforeEach(() => { useFakeTimers(); });
@@ -189,6 +189,19 @@ describe('Home and cars', () => {
     expect(await screen.findByText('Payoff date set')).toBeInTheDocument();
     clickUndo();
     await waitFor(() => expect(undoCalls(fetchMock)).toContain('/api/undo/f'));
+  });
+
+  // Review of #51: the payoff readout shows the saved loan, so it is quiet when the step opens; a change is said.
+  it('the payoff readout is quiet when the step opens and said when the payment changes it', async () => {
+    stubFetch({ ...base(home({ properties: [{ ...home().properties[0], mortgage: loan({ payment_cents: 268_000 }) }] })), ...undoRoutes });
+    atProfileLive('/profile/home/mortgages');
+    await screen.findByLabelText('Monthly payment');
+    const payoff = screen.getByTestId('payoff');
+    expect(payoff).toHaveTextContent('Paid off by');
+    expect(screen.getByTestId('live-said')).not.toHaveTextContent('Paid off by');
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '3500' } });
+    await waitFor(() => expect(screen.getByTestId('live-said')).toHaveTextContent('Paid off by'));
+    expect(screen.getByTestId('live-said').textContent).toContain(payoff.querySelector('.calc__value')?.textContent ?? 'none');
   });
 
   it('where you live: a rate saves the account and the fact, and one Undo reverts both, fact first', async () => {

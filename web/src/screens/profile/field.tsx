@@ -7,6 +7,7 @@ import { UNDO } from '../../lib/copy';
 import { composing } from '../../lib/ime';
 import { Affix } from '../../ui/Affix';
 import { Field, FormError } from '../../ui/Field';
+import { Shown } from '../../ui/Live';
 import { MoneyInput } from '../../ui/MoneyInput';
 import { failure } from '../settings/shared';
 import { EDIT, NOT_SET, SAVED } from './copy';
@@ -230,7 +231,7 @@ function CardField(f: FieldSpec) {
         </button>
       )}
       {undo && (
-        <span className="prof-saved" role="status">{SAVED} · <button type="button" className="link" onClick={() => void undoIt()}>{UNDO}</button></span>
+        <Shown as="span" className="prof-saved">{SAVED} · <button type="button" className="link" onClick={() => void undoIt()}>{UNDO}</button></Shown>
       )}
       {error && <FormError>{error}</FormError>}
     </div>

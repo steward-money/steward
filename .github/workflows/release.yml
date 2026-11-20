@@ -2,6 +2,9 @@
 # ghcr.io/steward-money/steward-proxy and ghcr.io/steward-money/steward-gateway for linux/amd64, push them, attach an SPDX SBOM and provenance (buildx), and sign
 # each by digest with cosign, keyless. The signature names this workflow and the tag, through GitHub's OIDC token; no
 # stored secret is used. Every job runs only in the public repo, steward-money/steward.
+# Before any image is built, the notes job checks docs/releases/<version>.md (tag v0.1.2 is 0.1.2) has its four
+# sections (scripts/release_notes.py). After the images, the release job publishes the GitHub Release from that file,
+# with each image's digest read from the registry.
 # To check an image:
 #   cosign verify ghcr.io/steward-money/steward:<version> \
 #     --certificate-identity-regexp '^https://github\.com/steward-money/steward/\.github/workflows/release\.yml@refs/tags/v' \
@@ -15,8 +18,23 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  notes:
+    if: github.repository == 'steward-money/steward'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 scripts/release_notes.py check "$TAG"
   image:
     if: github.repository == 'steward-money/steward'
+    needs: notes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -74,3 +92,41 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
+  release:
+    if: github.repository == 'steward-money/steward'
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Write the notes with the image digests
+        env:
+          TAG: ${{ github.ref_name }}
+          IMAGES: steward steward-proxy steward-gateway
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          for name in $IMAGES; do
+            ref="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${name}:${version}"
+            digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
+            echo "$ref $digest"
+          done > "$RUNNER_TEMP/digests"
+          python3 scripts/release_notes.py body "$TAG" < "$RUNNER_TEMP/digests" > "$RUNNER_TEMP/notes.md"
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          title="Steward ${TAG#v}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$TAG" --title "$title" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+          fi

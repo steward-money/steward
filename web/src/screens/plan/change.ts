@@ -1,4 +1,4 @@
-import { dateLabelFromIso, dollars } from '../../lib/format';
+import { dateLabel, dollars } from '../../lib/format';
 import type { InputsSummary, PlanReady, SavedPlan } from './api';
 import * as C from './copy';
 
@@ -69,7 +69,7 @@ export const baseOf = (data: PlanReady): SavedPlan | null => data.previous ?? da
 export function changeLine(data: PlanReady, today: Date): Change | null {
   const saved = baseOf(data);
   if (!saved) return null;
-  const date = dateLabelFromIso(saved.saved_at, today);
+  const date = dateLabel(saved.saved_day, today);
   const now: Age = { age: data.result.comfortable_age, months: data.inputs_summary?.comfortable_months ?? null };
   const then: Age = { age: saved.comfortable_age, months: saved.inputs_summary?.comfortable_months ?? null };
   const facts = saved.inputs_summary && data.inputs_summary ? changeFacts(data.inputs_summary, saved.inputs_summary) : [];

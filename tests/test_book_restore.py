@@ -353,7 +353,7 @@ def test_a_revision_lower_than_the_schema_really_is(exported, other, tmp_path, m
     info, _ = _restores_as_steward_built_it(books, ours, other, crafted)
     eng = make_engine(other.path_for(info), other.key_for(info))
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
     eng.dispose()
 
 

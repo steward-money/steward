@@ -1,7 +1,8 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { wrapBook } from '../../test-utils';
+import { LiveRegions } from '../../ui/Live';
 import { BackgroundLine } from './BackgroundLine';
 
 vi.mock('../../celebrate/celebrate', () => ({ acorn: () => () => {} }));
@@ -36,14 +37,16 @@ describe('the background line (phase 17 spec 3.7)', () => {
     expect(screen.getByTestId('gateway-back').querySelector('svg.acorn')).toHaveAttribute('data-face', 'win');
   });
 
-  it('announces the swap: the line is a status region and the back words land inside it', async () => {
-    wrapBook(<Flip />);
+  it('announces the swap: the line says its words through the polite region, and the back words land inside it', async () => {
+    // Issue #51: a live region that appears with its words is often not read, so the line is not one.
+    wrapBook(<LiveRegions><Flip /></LiveRegions>);
     const line = screen.getByTestId('bg');
-    expect(line).toHaveAttribute('role', 'status');
+    expect(line).not.toHaveAttribute('role');
+    expect(screen.getByTestId('live-said')).toHaveTextContent('Waiting for the gateway to categorize 4');
     fireEvent.click(screen.getByText('flip'));
-    expect(await screen.findByText('The gateway is back. Catching up.')).toBeInTheDocument();
+    expect(await within(line).findByText('The gateway is back. Catching up.')).toBeInTheDocument();
     expect(screen.getByTestId('bg')).toBe(line);
-    expect(within(line).getByText('The gateway is back. Catching up.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('live-said')).toHaveTextContent('The gateway is back. Catching up.'));
   });
 
   it('reduced motion: the words and the still win face stay', async () => {
@@ -53,7 +56,7 @@ describe('the background line (phase 17 spec 3.7)', () => {
       fireEvent.click(screen.getByText('flip'));
       expect(await screen.findByText('The gateway is back. Catching up.')).toBeInTheDocument();
       expect(screen.getByTestId('gateway-back').querySelector('svg.acorn')).toHaveAttribute('data-face', 'win');
-      expect(screen.getByTestId('bg')).toHaveAttribute('role', 'status');
+      expect(screen.getByTestId('bg')).not.toHaveAttribute('role');
     } finally { vi.unstubAllGlobals(); }
   });
 

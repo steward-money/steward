@@ -5,7 +5,7 @@ import { CLOSER_CHEERS } from './copy';
 import { planFixture, summaryFixture } from './fixtures';
 
 const TODAY = new Date(2026, 9, 28);
-const ON = 'Oct 1[23]';   // the fixture was saved at 19:00 UTC on Oct 12: Oct 12 or 13, depending on the zone
+const ON = 'Oct 12';   // the fixture's saved_day, the household's day the server sends (#52)
 /** The fixture, with today's summary (`now`) or the saved one (`then`) changed. */
 function plan(f: (d: PlanReady, now: InputsSummary, then: InputsSummary) => void): PlanReady {
   const d = planFixture();
@@ -85,7 +85,7 @@ describe('the line, in its four cases and without a summary', () => {
   it('compares with the newest plan saved before today when the current one was saved today (Engineering choice 8)', () => {
     const d = planFixture();
     d.previous = d.plan;
-    d.plan = { ...d.plan!, id: 9, saved_at: '2026-10-28T15:00:00+00:00', comfortable_age: 62 };
+    d.plan = { ...d.plan!, id: 9, saved_at: '2026-10-28T15:00:00+00:00', saved_day: '2026-10-28', comfortable_age: 62 };
     d.result.comfortable_age = 62;
     d.inputs_summary.comfortable_months = 738;
     expect(line(d)!.text).toMatch(re(`1 year earlier than on ${ON}\\.`));
@@ -93,10 +93,10 @@ describe('the line, in its four cases and without a summary', () => {
 
   it('a plan saved today and none before: "No change since Oct 28."', () => {
     const d = planFixture();
-    d.plan = { ...d.plan!, saved_at: '2026-10-28T15:00:00+00:00', inputs_summary: null };
+    d.plan = { ...d.plan!, saved_at: '2026-10-28T15:00:00+00:00', saved_day: '2026-10-28', inputs_summary: null };
     d.previous = null;
     expect(line(d)).toMatchObject({ dir: 'same' });
-    expect(line(d)!.text).toMatch(/^No change since Oct 2[78]\.$/);
+    expect(line(d)!.text).toBe('No change since Oct 28.');
   });
 });
 

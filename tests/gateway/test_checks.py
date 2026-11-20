@@ -184,6 +184,96 @@ def test_a_ticked_payment_app_payee_can_be_a_persons_name_and_the_docs_say_so():
     assert "except in store rows a manager approves" in readme
 
 
+# --- Public issue #53: a person's name the model finds in an unticked approved store name goes as [name] -------------
+
+
+def content_of(*merchants, payees=()):
+    return {"rows": [{"date": "2026-10-18", "amount_cents": -1599, "category": "subscriptions", "merchant": m,
+                      "account": "Account 2"} for m in merchants],
+            "payees": [{"payee": f"Payee {i + 1}", "name": n} for i, n in enumerate(payees)], "more": False}
+
+
+def masked(content, ticked=(), detectors=DET):
+    from steward_gateway.checks import mask_store_names
+    return mask_store_names(content, frozenset(ticked), detectors, ISSUED)
+
+
+def test_an_unticked_approved_row_sends_a_name_the_model_finds_as_name():
+    got = masked(content_of("Tom Becker Plumbing", payees=["Dr. Alvarez"]))
+    assert [r["merchant"] for r in got["rows"]] == ["[name] Plumbing"]
+    assert [p["name"] for p in got["payees"]] == ["[name]"]
+    check(rows(got["rows"][0]["merchant"]))                      # what goes passes the checks
+
+
+def test_the_same_row_ticked_keeps_the_name():
+    content = content_of("Tom Becker Plumbing", "Priya Nair", payees=["Dr. Alvarez"])
+    got = masked(content, {"r0", "p0"})
+    assert [r["merchant"] for r in got["rows"]] == ["Tom Becker Plumbing", "[name]"]
+    assert [p["name"] for p in got["payees"]] == ["Dr. Alvarez"]
+    assert content == content_of("Tom Becker Plumbing", "Priya Nair", payees=["Dr. Alvarez"])     # not changed in place
+
+
+def test_a_row_with_only_a_store_name_is_unchanged():
+    content = content_of("StreamBox", "Zelle to [name]", payees=["StreamBox"])
+    assert masked(content) == content
+
+
+def test_a_name_the_model_misses_is_left_and_the_docs_say_so():
+    """The model is the only reader here: a person's name it doesn't recognize goes as the card showed it."""
+    from tests.public_docs import ROOT, flat, section
+    content = content_of("Margo Quill Pottery")
+    assert masked(content) == content
+    said = flat(section(ROOT / "docs/explanations/privacy.md", "## What the checks can miss"))
+    assert "when the gateway's model doesn't recognize it" in said
+    assert "these rows have no tick, so a name the model does find in one always goes as [name]" in said
+
+
+def test_only_a_name_is_masked_and_other_findings_still_stop_the_turn():
+    got = masked(content_of("Call (714) 555-0102"))
+    assert got["rows"][0]["merchant"] == "Call (714) 555-0102"     # a phone isn't masked here: the check stops it
+    with pytest.raises(Stopped) as e:
+        check(rows(got["rows"][0]["merchant"]))
+    assert e.value.check in ("text", "model", "fingerprint")
+
+
+def test_a_mask_that_would_run_past_the_limit_sends_the_whole_name_as_name():
+    from steward_boundary import tools as T
+    long = "Tom " + "x" * (T.MERCHANT_STORE_CHARS - 4)
+    assert len(long) == T.MERCHANT_STORE_CHARS
+    assert masked(content_of(long))["rows"][0]["merchant"] == "[name]"
+
+
+def test_text_the_plain_view_changes_sends_the_whole_name_as_name():
+    """The model reads the plain view; an edit made there can't be laid on other text, so the whole name goes."""
+    assert masked(content_of("Tom​ Becker"))["rows"][0]["merchant"] == "[name]"
+
+
+def test_a_result_of_the_wrong_shape_is_left_for_the_schema_check():
+    bad = {"rows": [{"merchant": "Tom Becker"}], "payees": [], "more": False}
+    assert masked(bad) is bad
+    assert masked({"rows": "Tom Becker"}) == {"rows": "Tom Becker"}
+
+
+def test_every_mask_the_gateway_makes_is_one_the_nas_records():
+    """The two halves of public issue #53 agree: whatever mask_store_names sends, masked_from accepts against the
+    approved name, so a masked row is recorded and never refused as changed."""
+    from steward_boundary.store_rows import masked_from
+    from tests.gateway.fakes import THIRD_PARTY_NAMES
+    names = [f"{n} Plumbing" for n in THIRD_PARTY_NAMES]
+    names += [f"Paid {n} and {m}" for n, m in zip(THIRD_PARTY_NAMES, THIRD_PARTY_NAMES[::-1])]
+    names += ["Tom" * 20, "Tom " * 15, "TomBecker", "tom becker", "StreamBox", "Zelle to [name]", "Tom​ Becker"]
+    for n in names:
+        approved = n[:60]
+        sent = masked(content_of(approved))["rows"][0]["merchant"]
+        assert masked_from(sent, approved), (sent, approved)
+
+
+def test_the_tick_never_reaches_claude():
+    """mask_store_names returns content of the same shape: no `ticked`, nothing beside the rows."""
+    content = content_of("Tom Becker Plumbing")
+    assert set(masked(content, {"r0"})) == set(content) == {"rows", "payees", "more"}
+
+
 def test_the_only_free_text_in_store_rows_is_the_approved_names():
     """Task 6.5 audit: approved rows are scanned without the payee and institution hashes, so that exemption must
     reach nothing but the store and payee names. Every other string a merchant_detail result can hold is a date, a

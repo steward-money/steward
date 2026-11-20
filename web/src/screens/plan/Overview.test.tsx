@@ -9,6 +9,7 @@ import { CHILDREN, FACTS, impactsFixture, nextDollarFixture, planFixture } from 
 import { Overview } from './Overview';
 import { currentStep, topHelps } from './OverviewCards';
 import { setSavedNote } from './savedNote';
+import { today } from '../../lib/today';
 
 afterEach(() => { vi.unstubAllGlobals(); setSavedNote(null); });
 
@@ -87,7 +88,7 @@ describe('Overview (plan subpages decision 2): am I on track', () => {
 
   it('offers the first save when nothing is saved yet, and it saves the plan as it stands', async () => {
     const data = planFixture();
-    const saved = { ...data.plan!, id: 8, saved_at: new Date().toISOString(), saved_by: { id: 1, name: 'JR' },
+    const saved = { ...data.plan!, id: 8, saved_at: new Date().toISOString(), saved_day: today(), saved_by: { id: 1, name: 'JR' },
       inputs_summary: { ...data.inputs_summary, saving_cents: 250_000 } };
     const fetchMock = routes({ 'POST /api/plan': () => reply({ plan: saved, levers: data.levers, result: data.result }, 201) });
     const { qc, rerender } = open({ ...data, plan: null });

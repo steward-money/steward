@@ -10,6 +10,7 @@ import { fill, GROWTH_ALL, GROWTH_NEXT, MILESTONE_NAME, MILESTONE_NOT_YET, MILES
 import { momentAllowed } from '../../lib/momentAllowed';
 import { setQueryDataIfStillIn } from '../../queryClient';
 import { Acorn } from '../../ui/Acorn';
+import { Shown } from '../../ui/Live';
 import { monthLong, monthName } from '../cashflow/months';
 import { OakTree } from '../../ui/OakTree';
 import { useAcornMotion, useWinMoment } from '../../ui/useMoment';
@@ -70,7 +71,7 @@ export function HomeTree({ asOf }: { asOf: string }) {
   if (!allowed.face || !g) return null;
   return (
     <aside className="home-tree" data-testid="home-tree">
-      {said && <p className="home-tree__line" role="status">{said}</p>}
+      {said && <Shown className="home-tree__line">{said}</Shown>}
       <OakTree ref={svg} stage={g.stage} label={treeLabel(g.stage)} />
     </aside>
   );

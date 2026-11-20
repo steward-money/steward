@@ -46,28 +46,30 @@ def _wrong(request: Request, device: devices.Device) -> JSONResponse:
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(directory_db)):
     """Issue #7: wrong passwords count per device and account (auth/devices.py), and a device the account doesn't
-    know yet counts against its address too. A wrong password, a name nobody has, this device's lock and the
-    account's lock all answer the same 401 after one password hash, so none shows that a username exists."""
+    know yet counts against its address too. There the counts go by the name as typed, so a username and its email
+    count apart whether or not they are an account's. A wrong password, a name nobody has, this device's lock and the
+    account's lock all answer the same 401 after one password hash, so none shows that a username exists. A wrong
+    password, a name nobody has and the account's lock also hash, write and commit in the same order, so each holds
+    the write lock as long (issue #50, users.miss)."""
     t = now()
     lockouts = request.app.state.device_lockouts
     found = users.find_user(db, body.username)
     device = devices.identify(request, found)
-    account = devices.account_key(found, body.username)
+    account = devices.account_key(found, body.username, device)
     if lockouts.locked(device, account, t):
         verify_password(users._DUMMY_HASH, body.password)   # one hash, as a wrong password takes
         return _wrong(request, device)
     try:
         u = users.check_login(db, body.username, body.password, t, backstop=not device.known)
     except users.Locked:
-        # Charged like a wrong password: an uncharged try here, against a charged one at a name nobody has, would
-        # show by the address's lock whether the name exists.
-        verify_password(users._DUMMY_HASH, body.password)
+        # check_login has hashed once. Charged like a wrong password: an uncharged try here, against a charged one at
+        # a name nobody has, would show by the address's lock whether the name exists.
         lockouts.failed(device, account, t)
         return _wrong(request, device)
     except users.BadCredentials:
         lockouts.failed(device, account, t)
         return _wrong(request, device)
-    lockouts.cleared(device, account)
+    lockouts.cleared(device, devices.account_keys(u, device))   # at the username and the email
     label = body.device_label or request.headers.get("user-agent", "")[:120]
     token, _ = sessions.create_session(db, u, label, t, request.app.state.settings.session_days)
     cookies.set_session(request, response, token, request.app.state.settings.session_days * 86400)
@@ -137,9 +139,7 @@ def revoke_session(sid: int, request: Request, found=Depends(current_session), d
         raise HTTPException(404, detail={"error": "That device isn't signed in."})
     resp = Response(status_code=204)
     if sid == this_session.id:
-        # This device signed itself out: no queued move of a 0.1.0 cookie hands the revoked token back.
-        cookies.cancel_move(request)
-        cookies.clear_session(request, resp)
+        cookies.clear_session(request, resp)     # this device signed itself out
     return resp
 
 
@@ -154,7 +154,7 @@ def require_current_password(request: Request, db: Session, me: User, password: 
     any stranger. The person is signed in, so a lock may say so (423)."""
     lockouts = request.app.state.device_lockouts
     device = devices.identify(request, me)
-    account = devices.account_key(me, me.username)
+    account = devices.account_keys(me, device)   # no name is typed: the username's and the email's counts apply
     until = lockouts.locked(device, account, t)
     if until:
         raise _locked(until, t)

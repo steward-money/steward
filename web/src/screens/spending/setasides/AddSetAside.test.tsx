@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFakeTimers } from '../../../test-clock';
 import { callsTo, renderAt, reply, stubFetch } from '../../../test-utils';
+import { LiveRegions } from '../../../ui/Live';
 import { HEATER_DETAIL, LIST, PROPTAX_DETAIL } from './fixtures';
 import { AddSetAside } from './AddSetAside';
 import { PREVIEW_MS } from './SetAsideForm';
@@ -40,6 +41,15 @@ const saves = (f: ReturnType<typeof stubFetch>) => callsTo(f, 'POST', '/api/seta
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(PREVIEW_MS); });
 
 describe('Add a set-aside', () => {
+  // Review of #51: the preview appears with its words, so it is said through the page's region, not as a live region.
+  it('the preview is said when it appears', async () => {
+    stubFetch(routes);
+    renderAt(<LiveRegions><AddSetAside /></LiveRegions>, {}, '/spending/setasides/new?name=Home+insurance&kind=yearly&amount=138000&due_month=5&due_day=12');
+    await waitFor(() => expect(screen.getByTestId('sa-preview')).toHaveTextContent('From November · next due May 12, 2027'));
+    expect(screen.getByTestId('sa-preview')).not.toHaveAttribute('aria-live');
+    expect(screen.getByTestId('live-said')).toHaveTextContent('From November · next due May 12, 2027');
+  });
+
   it('a yearly cost from a suggestion is filled in, previews, and saves, then opens its page', async () => {
     const fetchMock = stubFetch({ ...routes, 'POST /api/setasides': { ...PROPTAX_DETAIL, id: 9 } });
     const { location } = renderAt(<AddSetAside />, {}, '/spending/setasides/new?name=Home+insurance&kind=yearly&amount=138000&due_month=5&due_day=12&payee_key=BIG+MUTUAL&category=insurance');

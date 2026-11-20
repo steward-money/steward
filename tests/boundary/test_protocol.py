@@ -52,6 +52,22 @@ def test_tool_results_frame():
     assert P.check_frame(P.TOOL_RESULTS, {**ok, "results": [{**ok["results"][1], "error": "Anything"}]})
 
 
+def test_a_tool_result_may_carry_the_rows_a_manager_ticked_and_nothing_else_beside_its_content():
+    """Public issue #53: an approved merchant_detail result says which rows and payees were ticked, beside its content.
+    Only "r<row>" and "p<payee>" within a card's limits; protocol 2's frame had no such field, so an older gateway
+    refuses it and the protocol number moves to 3."""
+    rows = {"rows": [], "payees": [], "more": False}
+    result = {"id": "toolu_m1", "name": "merchant_detail", "content": rows, "error": None}
+    frame = lambda r: {"type": "tool_results", "seq": 1, "results": [r]}           # noqa: E731
+    for ticked in ([], ["r0"], ["r0", "r199", "p0", "p49"]):
+        assert P.check_frame(P.TOOL_RESULTS, frame({**result, "ticked": ticked})) == [], ticked
+    assert P.check_frame(P.TOOL_RESULTS, frame(result)) == []                       # optional: no ticks
+    for bad in (["x1"], ["r01"], ["r1000"], ["p100"], ["r0 "], ["Priya Nair"], [0], "r0", ["r0"] * 251):
+        assert P.check_frame(P.TOOL_RESULTS, frame({**result, "ticked": bad})), bad
+    assert P.check_frame(P.TOOL_RESULTS, frame({**result, "names": ["r0"]}))        # no other field
+    assert PROTOCOL == 3
+
+
 def test_every_line_is_plain_and_names_a_stop():
     assert set(P.LINES) <= P.STOPS | {"away"}
     for line in P.LINES.values():

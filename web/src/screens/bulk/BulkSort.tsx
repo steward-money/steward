@@ -10,6 +10,7 @@ import { Button } from '../../ui/Button';
 import { CategoryMenu } from '../../ui/CategoryMenu';
 import { Rich } from '../../ui/Rich';
 import { UNDONE_MS, useHoldableTimer } from '../../lib/useHoldableTimer';
+import { Shown } from '../../ui/Live';
 import './bulk.css';
 
 /** The result line stays this long, held while the pointer is on it or focus is in it. */
@@ -142,17 +143,17 @@ export default function BulkSort({ selecting, ids, onCancel, onSorted, onUndone,
           onPointerLeave={(e) => { if (e.pointerType === 'mouse') setHeld(false); }}
           onFocus={() => { setHeld(true); }}
           onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHeld(false); }}>
-          <p className="bulk__facts" role="status"><Rich parts={said.parts} /></p>
+          <Shown className="bulk__facts"><Rich parts={said.parts} /></Shown>
           {said.stamp && <span ref={stampAt} className="bulk__stamp" aria-hidden="true" />}
           {said.undo && <Button ref={undoBtn} variant="quiet" busy={busy} onClick={undo}>{UNDO}</Button>}
         </div>
       )}
       {selecting && (
         <div className="bulk__bar" data-testid="bulk-bar">
-          <p className="bulk__count" aria-live="polite">
+          <Shown className="bulk__count">
             <span className="strong">{N_SELECTED.replace('{n}', String(n))}</span>
             {tooMany && <span className="bulk__warn">{SORT_TOO_MANY}</span>}
-          </p>
+          </Shown>
           {error && <p className="bulk__error" role="alert"><Rich parts={rich(NOT_SAVED, { message: error })} /></p>}
           <div className="bulk__actions">
             <Button variant="quiet" onClick={end}>{CANCEL}</Button>

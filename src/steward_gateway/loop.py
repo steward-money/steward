@@ -1,23 +1,24 @@
 """One turn on the gateway (spec 4.5, 8.2). Redact the question; then for each request (at most 8): run the outgoing
 checks on the new parts, reserve the worst case, have the NAS record the parts, send them to the NAS as "sent", stream
-from Anthropic with server-side fallback, settle the cost, and pass any tool calls to the NAS. Every exit is a done
-frame with a stop code; nothing is ever retried by sending more (spec 10). The reservation is sized on the whole
-request body; every exit that isn't a settled request releases it, or, when the request was sent and then cancelled
-or dropped with no usage back, settles it at the full reservation (preflight ruling 4, chunk 2 ruling). Logs carry
+from Anthropic with server-side fallback, settle the cost, and pass any tool calls to the NAS. In approved store rows
+that come back, a person's name the model finds in an unticked row is replaced first (checks.mask_store_names). Every
+exit is a done frame with a stop code; nothing is ever retried by sending more (spec 10). The reservation is sized on
+the whole request body; every exit that isn't a settled request releases it, or, when the request may have been sent and was
+then cancelled or dropped with no usage back, settles it at the full reservation (preflight ruling 4, chunk 2 ruling;
+steward_gateway.sending says when nothing can have been sent). Logs carry
 turn ids, timings, tokens and costs only (spec 3.1)."""
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
-from contextlib import suppress
-from collections.abc import Callable, Sequence
+from contextlib import aclosing, suppress
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
 import anthropic
-import httpx2
 
 from steward_boundary import PROTOCOL
 from steward_boundary import protocol as P
@@ -25,7 +26,8 @@ from steward_boundary import tools as T
 from steward_boundary.about import about_text
 from steward_boundary.aliases import BRACKETS
 from steward_boundary.canonical import canonical
-from steward_gateway.checks import Part, Stopped, check_parts, verify_history
+from steward_boundary.store_rows import ticks_of
+from steward_gateway.checks import Part, Stopped, check_parts, mask_store_names, verify_history
 from steward_gateway.config import FALLBACK_BETA, MAX_STEPS, MAX_TOKENS, GatewayConfig
 from steward_gateway.ledger import CapReached, Ledger
 from steward_gateway.logs import api_error_reason, log_event
@@ -33,6 +35,7 @@ from steward_gateway.mac import mac
 from steward_gateway.prices import cost_nd, estimate_nd, reserve_price, settle_price
 from steward_gateway.prompt import context_text, request_body, system_message, user_text
 from steward_gateway.redact import Detector, redact
+from steward_gateway.sending import Attempt, nothing_sent, watching
 
 log = logging.getLogger("steward_gateway.loop")
 
@@ -62,9 +65,9 @@ class TurnDeps:
 
 def _unwind(ledger: Ledger, rid: int, reserved: int, billable: bool) -> int:
     """A request that never reached Anthropic, or that Anthropic refused with an error status, cost nothing and is
-    released. One that was sent and then cancelled or dropped with no usage back may have been billed, so it counts
-    at its full reservation (chunk 2 ruling: billing on cancel is unknown, and this keeps the cap safe). Returns what
-    it was charged, so the turn's done frame carries the real cost."""
+    released. One that may have been sent and then was cancelled or dropped with no usage back may have been billed,
+    so it counts at its full reservation (chunk 2 ruling: billing on cancel is unknown, and this keeps the cap safe).
+    Returns what it was charged, so the turn's done frame carries the real cost."""
     if billable:
         ledger.settle(rid, reserved)
         return reserved
@@ -72,9 +75,37 @@ def _unwind(ledger: Ledger, rid: int, reserved: int, billable: bool) -> int:
     return 0
 
 
-def _never_connected(e: anthropic.APIConnectionError) -> bool:
-    """The connection to Anthropic was never made, so nothing was sent."""
-    return isinstance(e.__cause__, (httpx2.ConnectError, httpx2.ConnectTimeout))
+class StreamCut(Exception):
+    """The stream broke once Anthropic had answered 200, or ended without message_start or message_stop: an answer cut
+    short, with no final usage (Argon 3.1)."""
+
+
+async def _events(stream) -> AsyncIterator[Any]:
+    """The stream's events. Whatever reading it raises comes out as StreamCut from that error: httpx2 failing to read
+    the body, an event that isn't UTF-8 or JSON, the SDK's own parsing (a bare APIError, APIResponseValidationError, a
+    ValueError on a tool's input, an IndexError on a block that never started). An error event keeps its status error,
+    so its kind can still read as busy."""
+    events = stream.__aiter__()
+    while True:
+        try:
+            event = await events.__anext__()
+        except StopAsyncIteration:
+            return
+        except anthropic.APIStatusError:
+            raise
+        except Exception as e:  # noqa: BLE001 - anything the stream raises is a broken stream
+            raise StreamCut(type(e).__name__) from e
+        yield event
+
+
+def _broken(streamed: bool, otherwise: str = "api_error") -> str:
+    """A request that failed: "dropped" (the answer is incomplete) when some of this turn's answer already reached the
+    NAS, in any step; `otherwise` ("api_error", or "busy" for a try-again-shortly error) when none did."""
+    return "dropped" if streamed else otherwise
+
+# Error kinds that mean "try again shortly", from a status (429, 503, 529) or an error event mid-stream.
+BUSY = (anthropic.RateLimitError, anthropic.ServiceUnavailableError, anthropic.OverloadedError)
+BUSY_KINDS = ("rate_limit_error", "overloaded_error")
 
 
 async def run_turn(start: dict, io: TurnIO, deps: TurnDeps) -> dict:
@@ -133,6 +164,7 @@ async def _turn(start: dict, io: TurnIO, deps: TurnDeps, totals: dict, done, tur
     new_msgs = [user_text(redacted.text), system_message(ctx)]
     parts = [Part("question", {"text": redacted.text}), Part("system", {"text": ctx})]
 
+    streamed = False        # answer text has reached the NAS in this turn, in any step: the NAS shows all of it
     for step in range(1, MAX_STEPS + 1):
         try:
             await asyncio.to_thread(check_parts, parts, detectors=deps.detectors, salt=salt, hashes=hashes,
@@ -151,14 +183,17 @@ async def _turn(start: dict, io: TurnIO, deps: TurnDeps, totals: dict, done, tur
             return await done("cap" if step == 1 else "cap_mid")
 
         open_ = True        # the reservation is open until it is settled below; every other exit unwinds it
-        sent = False        # the request went to Anthropic, so it may be billed even with no usage back
+        sent = False        # the request was handed to the SDK, so it may be billed even with no usage back
+        attempt = Attempt()     # unless the HTTP client says it never began writing it (Argon 2.1)
+        answered = False    # Anthropic accepted the request and began a stream: billable, whatever `attempt` says
 
         def unwind() -> None:
             """Before any done frame (and on every other exit): what this request was charged joins the totals."""
             nonlocal open_
             if open_:
                 open_ = False
-                totals["cost_nd"] += _unwind(deps.ledger, rid, reserved, sent)
+                billable = sent and (answered or not nothing_sent(attempt))
+                totals["cost_nd"] += _unwind(deps.ledger, rid, reserved, billable)
 
         try:
             await io.send({"type": "record", "seq": step, "model": model, "parts": [
@@ -178,18 +213,34 @@ async def _turn(start: dict, io: TurnIO, deps: TurnDeps, totals: dict, done, tur
             deps.ledger.record_sent(deps.now(), [(p.sha256(), p.size()) for p in parts], start["book_id"], "chat")
             totals["requests"] = step
 
-            answered = False    # Anthropic accepted the request and began a stream
+            started = stopped = False       # this stream's message_start and message_stop
             try:
-                manager = deps.client.beta.messages.stream(**body, betas=[FALLBACK_BETA], fallbacks="default")
-                sent = True
-                async with manager as stream:
-                    answered = True
-                    async for event in stream:
-                        if event.type == "content_block_start" and event.content_block.type == "tool_use":
-                            await io.send({"type": "status", "tool": event.content_block.name})
-                        elif event.type == "content_block_delta" and event.delta.type == "text_delta":
-                            await io.send({"type": "text", "delta": event.delta.text})
-                    final = await stream.get_final_message()
+                with watching(attempt):
+                    manager = deps.client.beta.messages.stream(**body, betas=[FALLBACK_BETA], fallbacks="default")
+                    sent = True
+                    async with manager as stream:
+                        answered = True
+                        try:
+                            async with aclosing(_events(stream)) as events:
+                                async for event in events:
+                                    if event.type == "message_start":
+                                        started = True
+                                    elif event.type == "message_stop":
+                                        stopped = True
+                                    elif event.type == "content_block_start" and event.content_block.type == "tool_use":
+                                        await io.send({"type": "status", "tool": event.content_block.name})
+                                    elif event.type == "content_block_delta" and event.delta.type == "text_delta":
+                                        await io.send({"type": "text", "delta": event.delta.text})
+                                        streamed = True
+                        except StreamCut:
+                            if not stopped:
+                                raise
+                            # It broke after message_stop: the answer and its usage are whole, so it ends as usual.
+                        if not (started and stopped):
+                            raise StreamCut("no message_start or message_stop")
+                        final = stream.current_message_snapshot
+                        if final.stop_reason is None:   # message_stop with no message_delta: no final usage
+                            raise StreamCut("no stop_reason")
             except anthropic.APIStatusError as e:
                 if not answered:    # Anthropic refused it with an error status: nothing to bill
                     sent = False
@@ -198,18 +249,25 @@ async def _turn(start: dict, io: TurnIO, deps: TurnDeps, totals: dict, done, tur
                           status=e.status_code, request_id=e.request_id, error_type=type(e).__name__,
                           error_kind=kind, error_message=message)
                 unwind()
-                if isinstance(e, (anthropic.RateLimitError, anthropic.OverloadedError)) or e.status_code == 529:
-                    return await done("busy")
+                if isinstance(e, BUSY) or e.status_code == 529 or kind in BUSY_KINDS:
+                    return await done(_broken(streamed, "busy"))
                 if isinstance(e, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
                     return await done("not_set_up")
-                return await done("api_error")
+                return await done(_broken(streamed))
             except anthropic.APIConnectionError as e:
-                if not answered and _never_connected(e):
+                if not answered and nothing_sent(attempt, e):
                     sent = False
                 log_event(log, "turn.request_failed", level=logging.WARNING, turn_id=turn_id, step=step,
                           error_type=type(e).__name__)
                 unwind()
-                return await done("api_error")
+                return await done(_broken(streamed))
+            except StreamCut as e:
+                # Anthropic answered and the stream then broke: it was sent and no final usage came back, so it counts
+                # in full, and the turn still ends with a done the NAS can show (Argon 3.1).
+                log_event(log, "turn.request_failed", level=logging.WARNING, turn_id=turn_id, step=step,
+                          error_type=type(e.__cause__ or e).__name__)
+                unwind()
+                return await done(_broken(streamed))
 
             usage = final.usage.to_dict(mode="json")
             cost = cost_nd(usage, settle_price(deps.config, final.model, usage))
@@ -252,12 +310,14 @@ async def _turn(start: dict, io: TurnIO, deps: TurnDeps, totals: dict, done, tur
             for r in res["results"]:
                 is_error = r["error"] is not None
                 content = {"error": r["error"]} if is_error else r["content"]
-                blocks.append({"type": "tool_result", "tool_use_id": r["id"], "content": canonical(content).decode(),
-                               "is_error": is_error})
                 # Approved store rows (plan B ruling 3). An empty result had no card, so it is an ordinary result
                 # (preflight ruling P1).
                 store = (r["name"] == T.MERCHANT and not is_error and isinstance(content, dict)
                          and bool(content.get("rows") or content.get("payees")))
+                if store:       # a person's name the model finds in an unticked row goes as [name] (public issue #53)
+                    content = await asyncio.to_thread(mask_store_names, content, ticks_of(r), deps.detectors, issued)
+                blocks.append({"type": "tool_result", "tool_use_id": r["id"], "content": canonical(content).decode(),
+                               "is_error": is_error})
                 kind = "merchant_rows" if store else "tool_result"
                 parts.append(Part(kind, {"tool_use_id": r["id"], "name": r["name"], "is_error": is_error,
                                          "content": content}))

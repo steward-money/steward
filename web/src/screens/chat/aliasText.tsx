@@ -2,6 +2,7 @@
 // what was sent (spec 4.2, JR decision 5). Answers are plain text: paragraphs, **bold**, "- " list lines, and dollar
 // amounts set strong so the numbers lead (design README, "The voice").
 import { Fragment, useState, type ReactNode } from 'react';
+import { Shown } from '../../ui/Live';
 import { ALIAS_TIP } from './copy';
 import { fill } from './askApi';
 
@@ -14,7 +15,7 @@ function Alias({ label, alias }: { label: string; alias: string }) {
   return (
     <button type="button" className="alias" title={tip} aria-label={`${label}. ${tip}`} aria-expanded={open}
       onClick={() => setOpen((o) => !o)}>
-      {label}{open && <span className="alias__tip" role="status">{tip}</span>}
+      {label}{open && <Shown as="span" className="alias__tip">{tip}</Shown>}
     </button>
   );
 }

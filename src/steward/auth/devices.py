@@ -1,7 +1,9 @@
 """Issue #7 (gate finding SEC-5): wrong passwords count per device and account, so a stranger's tries lock out only
 the stranger. Five wrong in 15 minutes lock password sign-in for that account on that device for 15 minutes
-(users.LOCK_AFTER, LOCK_MINUTES). Any lock answers exactly as a wrong password does (api/auth.py), so none shows
-that a username exists.
+(users.LOCK_AFTER, LOCK_MINUTES). On a device the account doesn't know, the account is the name as typed
+(account_key), so a username and its email count apart, as two names nobody has do. A device the account knows counts
+by the account. Any lock answers exactly as a wrong password does (api/auth.py), so none shows that a username
+exists.
 
 A device is a random id in a cookie the sign-in page sets (cookies.device_name), signed with a key derived from
 steward.key, so a made-up id is no device and a restart keeps the ids. Ids cost nothing to get, so only a device that
@@ -177,11 +179,29 @@ def signed_in(request: Request, response: Response, user: User, device: Device |
     _set(request, response, keys.with_note(did, notes, user))
 
 
-def account_key(user: User | None, typed: str) -> str:
-    """Whose password a try was for: the account, and its password hash's fingerprint, or the name as typed."""
-    if user is None:
-        return "name:" + typed.strip().lower()
-    return f"user:{user.id}:{hashlib.sha256(user.password_hash.encode()).hexdigest()[:16]}"
+def _fingerprint(user: User) -> str:
+    return hashlib.sha256(user.password_hash.encode()).hexdigest()[:16]
+
+
+def account_key(user: User | None, typed: str, device: Device) -> str:
+    """Whose password a try was for. On a device the account doesn't know: the name as typed, as users.find_user
+    matches it (case and surrounding spaces aside), whether or not it is an account's. Keyed by the account, a
+    username and its email would share one count only when they belong to a real account, so four tries at one and
+    one at the other would lock the sixth only then, which would show that the two are one account (issue #50, Argon
+    round). On a device the account knows: the account, so it has five tries for the account in all; only a device
+    that signed in to the account takes that path, so it shows nothing that device doesn't know. A real account's key
+    carries its password hash's fingerprint, so a new password starts every device's count afresh, whichever process
+    set it. The account's own 50-in-a-row lock counts by the account (users.ACCOUNT_LOCK_AFTER)."""
+    if device.known:
+        return f"user:{user.id}:{_fingerprint(user)}"
+    name = "name:" + typed.strip().lower()
+    return name if user is None else f"{name}:{_fingerprint(user)}"
+
+
+def account_keys(user: User, device: Device) -> tuple[str, ...]:
+    """Every key a try at this account counts under on this device: the account's on a device it knows, else its
+    username's and its email's."""
+    return tuple(dict.fromkeys(account_key(user, typed, device) for typed in (user.username, user.email) if typed))
 
 
 @dataclass
@@ -206,28 +226,37 @@ class DeviceLockouts:
         own lock doesn't hold a known device, so nothing else would. Only a sign-in makes a device known."""
         return self._known if device.known else self._counts
 
-    def locked(self, device: Device, account: str, now: datetime) -> datetime | None:
-        """When password sign-in opens again for this account on this device, or None when it is open."""
+    def locked(self, device: Device, accounts: str | tuple[str, ...], now: datetime) -> datetime | None:
+        """When password sign-in opens again on this device for these keys (account_key), or None when it is open.
+        A tuple is held when any of its keys is."""
         with self._lock:
             store = self._store(device)
-            found = [store.get((k, account)) for k in device.keys]
+            found = [store.get((k, a)) for a in _many(accounts) for k in device.keys]
             if device.address is not None:
                 found.append(self._addresses.get(device.address))
         return max((c.locked_until for c in found if _running(c, now)), default=None)
 
-    def failed(self, device: Device, account: str, now: datetime) -> None:
+    def failed(self, device: Device, accounts: str | tuple[str, ...], now: datetime) -> None:
+        """One wrong password, charged to each key and, once, to the address's total."""
         with self._lock:
-            for k in device.keys:
-                _charge(self._store(device), (k, account), now, LOCK_AFTER, self._max)
+            for a in _many(accounts):
+                for k in device.keys:
+                    _charge(self._store(device), (k, a), now, LOCK_AFTER, self._max)
             if device.address is not None:
                 _charge(self._addresses, device.address, now, ADDRESS_LOCK_AFTER, self._max)
 
-    def cleared(self, device: Device, account: str) -> None:
-        """A sign-in clears this device's counts for the account. Its address's total stays, since the right password
-        on one device says nothing about the other names tried from there."""
+    def cleared(self, device: Device, accounts: str | tuple[str, ...]) -> None:
+        """A sign-in clears this device's counts for the account (account_keys: at both its names). Its
+        address's total stays, since the right password on one device says nothing about the other names tried from
+        there."""
         with self._lock:
-            for k in device.keys:
-                self._store(device).pop((k, account), None)
+            for a in _many(accounts):
+                for k in device.keys:
+                    self._store(device).pop((k, a), None)
+
+
+def _many(accounts: str | tuple[str, ...]) -> tuple[str, ...]:
+    return (accounts,) if isinstance(accounts, str) else accounts
 
 
 def _running(c: _Count | None, now: datetime) -> bool:

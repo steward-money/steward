@@ -15,7 +15,7 @@ def test_0024_adds_the_undo_entry_table_and_downgrade_drops_it(settings):
     before = set(inspect(eng).get_table_names())
     run_migrations(eng)
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0037"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0038"
     assert set(inspect(eng).get_table_names()) == before | {"undo_entry", "reimburser", "trip", "reimburse_rule", "reimburse_settlement", "account_feed", "held_feed", "same_account_answer", "feed_txn_alias", "expense_ratio_override", "positions_mapping", "positions_import", "undo_text", "home_visit", "import_set", "import_layout", "import_hint", "statement_stage", "statement_layout"}
     cols = {col["name"]: col for col in inspect(eng).get_columns("undo_entry")}
     assert set(cols) == {"token", "user_id", "action", "created_at", "expires_at", "used_at", "before", "after"}

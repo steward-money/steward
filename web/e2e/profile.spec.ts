@@ -60,7 +60,7 @@ test('Kids and college: two kids, one 529 suggested by name and made a 529 plan,
   await expect(page.getByText(/Ava's 529 is on track to cover/)).toBeVisible();
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page).toHaveURL(/\/profile$/);
-  await expect(page.getByText('College, planned.')).toBeVisible();
+  await expect(page.getByRole('main').getByText('College, planned.')).toBeVisible();
   const plan = await (await page.request.get('/api/b/ours/plan/setup')).json();
   expect(plan.setup.find((i: { key: string }) => i.key === 'children').done).toBe(true);
 });

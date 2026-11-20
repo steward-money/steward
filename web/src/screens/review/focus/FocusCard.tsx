@@ -11,6 +11,7 @@ import { lazyScreen } from '../../../lib/lazyScreen';
 import { rich } from '../../../lib/receipt';
 import { UNDONE_MS, useHoldableTimer } from '../../../lib/useHoldableTimer';
 import { CategoryMenu } from '../../../ui/CategoryMenu';
+import { Shown } from '../../../ui/Live';
 import { Money } from '../../../ui/Money';
 import { Notice } from '../../../ui/Notice';
 import { Rich } from '../../../ui/Rich';
@@ -251,7 +252,7 @@ export function FocusCard({ txn, chips, today, role, leave, swipe, demo, elsewhe
         </p>
       )}
       <div className="fcard__body" inert={elsewhere}>
-        {showUndone !== null && <p className="rcard__undone" role="status">{UNDONE}</p>}
+        {showUndone !== null && <Shown className="rcard__undone">{UNDONE}</Shown>}
         <div id={guessId} className={`fcard__guess${guess ? '' : ' is-plain'}`}>
           {guess && <p className="fcard__probably"><Rich parts={rich(C.PROBABLY, { category: label(guess) })} /></p>}
           {reason && <p className="fcard__reason">{reason}</p>}
@@ -293,7 +294,7 @@ export function FocusCard({ txn, chips, today, role, leave, swipe, demo, elsewhe
             <span>{likeLine(a.matching)}</span>
           </label>
         ) : <p className="rcard__nomatch muted">{NONE_LIKE_IT}</p>)}
-        {a.either && <p className="rcard__either muted" role="status">{EITHER_LINE}</p>}
+        {a.either && <Shown className="rcard__either muted">{EITHER_LINE}</Shown>}
         {a.asking && current && (
           <Suspense fallback={null}>
             <PayerInline payers={a.payers} value={a.payerId} onChoose={a.choosePayer} />

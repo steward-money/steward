@@ -96,7 +96,7 @@ export function Reimbursements() {
       {head}
       {said && (
         <Notice>
-          <div className="rb-said" role="status">
+          <div className="rb-said">
             {said.cheer && <strong>{said.cheer}</strong>}
             <p><Rich parts={said.parts} /></p>
             {said.undo && <Button variant="quiet" busy={busy} onClick={() => { void undo(); }}>{UNDO}</Button>}
