@@ -48,7 +48,7 @@ models = [
     "gliner==0.2.30",
     "presidio-analyzer==2.2.366",
     "protobuf==7.36.2",
-    "torch==2.14.1",
+    "torch==2.15.0",
 ]
 
 [build-system]
