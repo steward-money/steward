@@ -5,16 +5,16 @@ description = "Household finance vault"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
-  "fastapi>=0.162.7",
+  "fastapi>=0.165.0",
   "uvicorn[standard]>=0.54.0",
-  "sqlalchemy>=2.1.8",
+  "sqlalchemy>=2.1.9",
   "alembic>=1.20.1",
   "sqlcipher3-binary>=0.5",
   "argon2-cffi>=23.1",
   "pydantic-settings>=2.16.3",
-  "typer>=0.29.1",
-  "httpx2>=2.16.0",
-  "python-multipart>=0.0.33",
+  "typer>=0.29.2",
+  "httpx2>=2.16.2",
+  "python-multipart>=0.0.34",
   "webauthn>=3.0",
   "numpy>=2.0",
   "defusedxml>=0.7",
@@ -41,7 +41,7 @@ dev = [
 ]
 # The gateway (spec 3.4). Never installed in the NAS image (`uv sync --frozen --no-dev`).
 gateway = [
-    "anthropic==2.8.0",
+    "anthropic==2.12.0",
 ]
 # GLiNER-PII and Presidio for the gateway's redaction (spec 4.3). The gateway's machine only.
 models = [
